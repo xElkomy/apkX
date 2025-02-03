@@ -1,87 +1,46 @@
-# APKX - Android APK Analysis Tool
+# apkX 🔍⏱️
 
-APKX is a powerful static analysis tool for Android APK files that helps identify sensitive information, such as:
-- API Keys
-- OAuth Tokens
-- Firebase URLs
-- Email Addresses
-- Endpoints and URLs
-- And more...
+Advanced APK analysis tool with enhanced terminal output and runtime tracking
 
-## Features
+![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![GitHub Actions](https://img.shields.io/github/actions/workflow/status/cyinnove/apkX/build.yml)
 
-- Fast APK decompilation using JADX
-- Comprehensive pattern matching for sensitive information
-- Clean and simple command-line interface
-- JSON output for easy integration with other tools
-- Customizable regex patterns
+## Requirements 🛠️
+- jadx 1.4.3+
+- go 1.21+
+- Android SDK (for aapt)
+- Java 8 (for jadx)
 
-## Requirements
+## Features ✨
+- ⏱️ Runtime duration tracking
+- 🎨 Colorful terminal output with emoji indicators
+- 🔍 Deep APK analysis for:
+  - URIs and endpoints
+  - Security secrets
+  - API keys
+  - Sensitive patterns
+- 📊 JSON report generation
+- 📅 Execution timestamp tracking
 
-- Go 1.19 or later
-- JADX (for APK decompilation)
-
-## Installation
-
+## Installation 📦
 ```bash
-# Clone the repository
-git clone https://github.com/h0tak88r/apkx.git
-cd apkx
-
-# Build the project
-go build -o apkx cmd/apkx/main.go
+git clone git@github.com:cyinnove/apkX.git
+cd apkX
+go build -o apkx ./cmd/apkx/main.go
 ```
 
-## Usage
-
+## Usage 🚀
 ```bash
-# Basic usage
-./apkx -f app.apk
+./apkx -f <path-to-apk> [flags]
 
-# Specify custom output file
-./apkx -f app.apk -o results.json
-
-# Use custom patterns file
-./apkx -f app.apk -r patterns.yaml
+# Example with test APK
+./apkx -f sample.apk -json -output results.json
 ```
 
-### Command Line Flags
+## Contributing 🤝
+We welcome contributions! Please follow our [contribution guidelines](CONTRIBUTING.md).
 
-- `-f` : APK file to analyze (required)
-- `-o` : JSON output file (default: apkx-results.json)
-- `-r` : Regex patterns file (default: config/regexes.yaml)
+---
 
-## Example Output
-
-```
-=== APK Analysis Summary ===
-Found sensitive information in 6 categories:
-  • API Keys: 2 findings
-  • OAuth Tokens: 1 findings
-  • Firebase URLs: 1 findings
-  • Email Addresses: 3 findings
-  • Endpoints: 12 findings
-  • URLs: 46 findings
-
-Results saved to: /path/to/apkx-results.json
-```
-
-## Custom Patterns
-
-You can create your own patterns file in YAML format:
-
-```yaml
-patterns:
-  - name: "API Keys"
-    regex: "api[_-]?key[_-]?([0-9a-zA-Z]{32,})"
-  - name: "OAuth Tokens"
-    regex: "access_token[_-]?([0-9a-zA-Z]{32,})"
-```
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit pull requests.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+🔧 Maintained by [Cyinnove](https://github.com/cyinnove) | 📧 contact@cyinnove.com
