@@ -52,18 +52,50 @@ jobs:
       - name: Test
         run: go test -v ./...
 
+      - name: Prepare Release Files
+        if: github.event_name == 'push'
+        run: |
+          # Create directories
+          mkdir -p release
+          mkdir -p release/config
+
+          # Copy binary
+          cp dist/${{ matrix.output_name }} release/
+
+          # Create minimal config if not exists
+          if [ ! -f "config/regexes.yaml" ]; then
+            echo "patterns:" > release/config/regexes.yaml
+            echo "  - name: example" >> release/config/regexes.yaml
+            echo "    regex: 'example'" >> release/config/regexes.yaml
+          else
+            cp -r config/* release/config/
+          fi
+
+          # Create minimal README if not exists
+          if [ ! -f "README.md" ]; then
+            echo "# apkX" > release/README.md
+            echo "APK analysis tool" >> release/README.md
+          else
+            cp README.md release/
+          fi
+
+          # Create minimal LICENSE if not exists
+          if [ ! -f "LICENSE" ]; then
+            echo "MIT License" > release/LICENSE
+            echo "Copyright (c) $(date +%Y)" >> release/LICENSE
+          else
+            cp LICENSE release/
+          fi
+        shell: bash
+
       - name: Create Archive
         if: github.event_name == 'push'
         run: |
-          mkdir -p release
-          cp dist/${{ matrix.output_name }} release/
-          cp README.md LICENSE release/
-          cp -r config release/
           cd release
           if [ "${{ runner.os }}" = "Windows" ]; then
-            7z a ../${{ matrix.asset_name }}.zip .
+            7z a ../${{ matrix.asset_name }}.zip ./*
           else
-            tar czf ../${{ matrix.asset_name }}.tar.gz .
+            tar czf ../${{ matrix.asset_name }}.tar.gz ./*
           fi
         shell: bash
 
