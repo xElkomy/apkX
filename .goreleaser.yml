@@ -18,10 +18,7 @@ builds:
 
 archives:
   - id: apkx
-    name_template: >-
-      {{ .ProjectName }}-
-      {{- title .Os }}-
-      {{- if eq .Arch "amd64" }}x86_64{{ end }}
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         format: zip
@@ -29,11 +26,6 @@ archives:
       - README.md
       - LICENSE
       - config/**/*
-    replacements:
-      darwin: Darwin
-      linux: Linux
-      windows: Windows
-      amd64: x86_64
 
 checksum:
   name_template: 'checksums.txt'
