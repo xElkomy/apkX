@@ -27,24 +27,37 @@ jobs:
       - name: Run Tests
         run: go test -v ./...
 
+      - name: Prepare Release Files
+        run: |
+          # Create directories
+          mkdir -p dist/linux
+          mkdir -p dist/windows
+          mkdir -p dist/darwin
+          
+          # Copy common files to each directory
+          for dir in dist/*; do
+            cp -r README.md LICENSE config "$dir/" || true
+          done
+
       - name: Build Binaries
         run: |
-          # Create dist directory
-          mkdir -p dist
-          
           # Build for Linux
-          GOOS=linux GOARCH=amd64 go build -o dist/apkx-linux-amd64 ./cmd/apkx/main.go
-          tar czf dist/apkx-linux-amd64.tar.gz -C dist apkx-linux-amd64 LICENSE README.md config/
+          GOOS=linux GOARCH=amd64 go build -o dist/linux/apkx ./cmd/apkx/main.go
+          cd dist/linux
+          tar czf ../apkx-linux-amd64.tar.gz *
+          cd ../..
           
           # Build for Windows
-          GOOS=windows GOARCH=amd64 go build -o dist/apkx-windows-amd64.exe ./cmd/apkx/main.go
-          zip -j dist/apkx-windows-amd64.zip dist/apkx-windows-amd64.exe LICENSE README.md
-          cp -r config dist/config-windows
-          zip -r dist/apkx-windows-amd64.zip dist/config-windows
+          GOOS=windows GOARCH=amd64 go build -o dist/windows/apkx.exe ./cmd/apkx/main.go
+          cd dist/windows
+          zip -r ../apkx-windows-amd64.zip *
+          cd ../..
           
           # Build for macOS
-          GOOS=darwin GOARCH=amd64 go build -o dist/apkx-darwin-amd64 ./cmd/apkx/main.go
-          tar czf dist/apkx-darwin-amd64.tar.gz -C dist apkx-darwin-amd64 LICENSE README.md config/
+          GOOS=darwin GOARCH=amd64 go build -o dist/darwin/apkx ./cmd/apkx/main.go
+          cd dist/darwin
+          tar czf ../apkx-darwin-amd64.tar.gz *
+          cd ../..
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
