@@ -14,8 +14,7 @@ import (
 )
 
 func printBanner() {
-	fmt.Printf("\033[1;36m\n🚀 APKX v%s\n", "1.0.0")
-	fmt.Printf("📅 Started at: %s\033[0m\n\n", time.Now().Format("2006-01-02 15:04:05"))
+	fmt.Printf("\033[1;36m\n📅 Started at: %s\033[0m\n\n", time.Now().Format("2006-01-02 15:04:05"))
 	banner := `         
 	┌─┐┌─┐┬┌─═╗ ╦
 	├─┤├─┘├┴┐╔╩╦╝
