@@ -17,14 +17,23 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Install dependencies
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Install JADX
         run: |
-          sudo apt-get update
-          sudo apt-get install -y android-sdk
-          wget https://github.com/skylot/jadx/releases/download/v1.4.3/jadx-1.4.3.zip
-          unzip jadx-1.4.3.zip
-          sudo mv jadx/bin/jadx /usr/local/bin/
-          sudo mv jadx/bin/jadx-gui /usr/local/bin/
+          JADX_VERSION="1.4.7"
+          mkdir -p /tmp/jadx
+          cd /tmp/jadx
+          wget -q "https://github.com/skylot/jadx/releases/download/v${JADX_VERSION}/jadx-${JADX_VERSION}.zip"
+          unzip -q "jadx-${JADX_VERSION}.zip"
+          sudo install -m 755 bin/jadx /usr/local/bin/
+          sudo install -m 755 bin/jadx-gui /usr/local/bin/
+          cd -
+          rm -rf /tmp/jadx
 
       - name: Build
         run: |
@@ -37,13 +46,14 @@ jobs:
       - name: Create Release Artifact
         if: github.event_name == 'push'
         run: |
-          mkdir dist
+          mkdir -p dist
           go build -o dist/apkx ./cmd/apkx/main.go
-          zip -r apkx-${{ github.sha }}.zip dist/*
+          tar czf apkx-${{ github.sha }}.tar.gz dist/
 
       - name: Upload Artifact
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: apkx-build
-          path: apkx-*.zip
+          path: apkx-*.tar.gz
+          retention-days: 7
