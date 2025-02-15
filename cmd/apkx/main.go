@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version = "v1.1.0" // Updated version with Discord webhook feature
+	version = "v1.3.0" // Added Discord webhook integration
 )
 
 func printBanner() {
