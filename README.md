@@ -4,7 +4,7 @@ Advanced APK analysis tool with intelligent caching and pattern matching for sec
 
 ![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![GitHub Actions](https://img.shields.io/github/actions/workflow/status/cyinnove/apkX/build.yml)
+![GitHub Actions](https://img.shields.io/github/actions/workflow/status/h0tak88r/apkX/build.yml)
 
 ## Features ✨
 - 🚀 Smart caching system for faster repeated analysis
@@ -31,7 +31,7 @@ Advanced APK analysis tool with intelligent caching and pattern matching for sec
 ## Installation 📦
 ```bash
 # Clone the repository
-git clone https://github.com/cyinnove/apkX.git
+git clone https://github.com/h0tak88r/apkX.git
 cd apkX
 
 # Build the binary
