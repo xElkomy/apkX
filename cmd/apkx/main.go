@@ -9,8 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/h0tak88r/apkX/internal/analyzer"
-	"github.com/h0tak88r/apkX/internal/utils"
+	"github.com/cyinnove/apkX/internal/analyzer"
+	"github.com/cyinnove/apkX/internal/utils"
+)
+
+const (
+	version = "v1.1.0" // Updated version with Discord webhook feature
 )
 
 func printBanner() {
@@ -22,6 +26,7 @@ func printBanner() {
             				
 `
 	fmt.Printf("%s%s%s\n", utils.ColorHeader, banner, utils.ColorEnd)
+	fmt.Printf(" Version: %s\n", version)  // Add version display
 	fmt.Println(" --")
 	fmt.Println(" Scanning APK file for URIs, endpoints & secrets")
 	fmt.Println()

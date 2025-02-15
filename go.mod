@@ -1,4 +1,4 @@
-module github.com/h0tak88r/apkX
+module github.com/cyinnove/apkX
 
 go 1.21
 
