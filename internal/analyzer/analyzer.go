@@ -1,10 +1,13 @@
 package analyzer
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -23,6 +26,7 @@ type Config struct {
 	JadxArgs     string // Additional jadx arguments
 	JSON         bool   // Save as JSON format
 	Verbose      bool   // Enable verbose output
+	Webhook      string // Add webhook field
 }
 
 type APKScanner struct {
@@ -413,6 +417,61 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
+func (s *APKScanner) sendToDiscord(filePath string) error {
+	if s.config.Webhook == "" {
+		return nil
+	}
+
+	file, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open results file: %v", err)
+	}
+	defer file.Close()
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	// Create form file
+	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return fmt.Errorf("failed to create form file: %v", err)
+	}
+
+	// Copy file content to form field
+	_, err = io.Copy(part, file)
+	if err != nil {
+		return fmt.Errorf("failed to copy file content: %v", err)
+	}
+
+	// Add message field
+	_ = writer.WriteField("content", fmt.Sprintf("APK Analysis Results for: %s", s.apkPkg))
+
+	writer.Close()
+
+	// Create and send request
+	req, err := http.NewRequest("POST", s.config.Webhook, body)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %v", err)
+	}
+
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send webhook request: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("webhook request failed with status: %d", resp.StatusCode)
+	}
+
+	fmt.Printf("%sResults sent to Discord webhook successfully%s\n", 
+		utils.ColorGreen, utils.ColorEnd)
+	return nil
+}
+
 func (s *APKScanner) saveResults(results map[string][]string) error {
 	// Create statistics map for different finding types
 	stats := make(map[string]int)
@@ -449,6 +508,14 @@ func (s *APKScanner) saveResults(results map[string][]string) error {
 		}
 		fmt.Printf("\n%sDetailed results saved to: %s%s%s\n", 
 			utils.ColorBlue, utils.ColorGreen, s.config.OutputFile, utils.ColorEnd)
+	}
+
+	// After saving the file, send to Discord if webhook is configured
+	if s.config.Webhook != "" {
+		if err := s.sendToDiscord(s.config.OutputFile); err != nil {
+			fmt.Printf("%sWarning: Failed to send results to Discord: %v%s\n",
+				utils.ColorYellow, err, utils.ColorEnd)
+		}
 	}
 
 	return nil

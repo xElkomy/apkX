@@ -34,14 +34,24 @@ func main() {
 		fmt.Printf("\n%s🕒 Tool runtime: %s%s\n", utils.ColorBlue, duration, utils.ColorEnd)
 	}()
 
-	// Update flag definitions
+	// Define flags
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: %s [options] <apk-file>\n\nOptions:\n", os.Args[0])
+		flag.PrintDefaults()
+	}
+
+	webhook := flag.String("wh", "", "Discord webhook URL to send results")
 	outputDir := flag.String("o", "apkx-output", "Output directory for results")
 	patternsFile := flag.String("p", "config/regexes.yaml", "Path to patterns file")
 	workers := flag.Int("w", 3, "Number of concurrent workers")
+
+	// Parse flags
 	flag.Parse()
 
-	// Get APK files from remaining arguments
+	// Get remaining arguments as APK files
 	apkFiles := flag.Args()
+
+	// Validate we have at least one APK file
 	if len(apkFiles) == 0 {
 		fmt.Printf("%sError: No APK files specified%s\n", utils.ColorRed, utils.ColorEnd)
 		flag.Usage()
@@ -63,7 +73,7 @@ func main() {
 	// Start worker goroutines
 	for i := 0; i < *workers; i++ {
 		wg.Add(1)
-		go worker(i, jobs, &wg, *outputDir, *patternsFile)
+		go worker(i, jobs, &wg, *outputDir, *patternsFile, *webhook)
 	}
 
 	// Queue jobs
@@ -80,7 +90,7 @@ func main() {
 	wg.Wait()
 }
 
-func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsFile string) {
+func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsFile, webhook string) {
 	defer wg.Done()
 
 	for apkFile := range jobs {
@@ -97,6 +107,7 @@ func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsF
 			APKFile:      apkFile,
 			OutputFile:   outputFile,
 			PatternsFile: patternsFile,
+			Webhook:      webhook,
 		}
 
 		scanner := analyzer.NewAPKScanner(&config)

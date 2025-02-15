@@ -21,6 +21,7 @@ Advanced APK analysis tool with intelligent caching and pattern matching for sec
 - ⚡ Concurrent file processing
 - 🔄 Automatic JADX installation
 - 💾 Efficient disk usage with SHA256-based caching
+- 🤖 Discord webhook integration for automated notifications
 
 ## Requirements 🛠️
 - Go 1.21+
@@ -53,12 +54,22 @@ go build -o apkx cmd/apkx/main.go
 
 # Control worker count
 ./apkx -w 5 app.apk
+
+# Send results to Discord
+./apkx -wh "https://discord.com/api/webhooks/your-webhook-url" app.apk
 ```
 
 ### Flags
 - `-o`: Output directory (default: "apkx-output")
 - `-p`: Path to patterns file (default: "config/regexes.yaml")
 - `-w`: Number of concurrent workers (default: 3)
+- `-wh`: Discord webhook URL for sending results (optional)
+
+## Discord Integration 🤖
+Send analysis results directly to your Discord channel:
+1. Create a webhook in your Discord server
+2. Use the `-wh` flag with your webhook URL
+3. Results will be sent as a file attachment with a summary message
 
 ## Cache Management 💾
 APK decompilations are cached in `~/.apkx/cache/` for faster repeated analysis:
@@ -101,4 +112,4 @@ MIT License - see [LICENSE](LICENSE) for details
 
 ---
 
-🔧 Maintained by [Cyinnove](https://github.com/cyinnove) | 📧 contact@cyinnove.com
+🔧 Maintained by [h0tak88r](https://github.com/h0tak88r)
