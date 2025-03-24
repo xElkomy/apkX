@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version = "v1.3.0" // Added Discord webhook integration
+	version = "v1.4.0" // Added Discord webhook integration
 )
 
 func printBanner() {
@@ -26,9 +26,9 @@ func printBanner() {
             				
 `
 	fmt.Printf("%s%s%s\n", utils.ColorHeader, banner, utils.ColorEnd)
-	fmt.Printf(" Version: %s\n", version)  // Add version display
+	fmt.Printf(" Version: %s\n", version) // Add version display
 	fmt.Println(" --")
-	fmt.Println(" Scanning APK file for URIs, endpoints & secrets")
+	fmt.Println(" Scanning APK file for URIs, endpoints, secrets & security vulnerabilities")
 	fmt.Println()
 }
 
@@ -39,22 +39,30 @@ func main() {
 		fmt.Printf("\n%s🕒 Tool runtime: %s%s\n", utils.ColorBlue, duration, utils.ColorEnd)
 	}()
 
-	// Define flags
-	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: %s [options] <apk-file>\n\nOptions:\n", os.Args[0])
-		flag.PrintDefaults()
-	}
+	var (
+		apkPath       string
+		outputDir     string
+		patternsPath  string
+		workers       int
+		webhookURL    string
+		taskHijacking bool
+	)
 
-	webhook := flag.String("wh", "", "Discord webhook URL to send results")
-	outputDir := flag.String("o", "apkx-output", "Output directory for results")
-	patternsFile := flag.String("p", "config/regexes.yaml", "Path to patterns file")
-	workers := flag.Int("w", 3, "Number of concurrent workers")
-
-	// Parse flags
+	flag.StringVar(&apkPath, "apk", "", "Path to APK file")
+	flag.StringVar(&outputDir, "o", "apkx-output", "Output directory for results")
+	flag.StringVar(&patternsPath, "p", "config/regexes.yaml", "Path to patterns file")
+	flag.IntVar(&workers, "w", 3, "Number of concurrent workers")
+	flag.StringVar(&webhookURL, "wh", "", "Discord webhook URL to send results")
+	flag.BoolVar(&taskHijacking, "task-hijacking", false, "Only scan for task hijacking vulnerabilities")
 	flag.Parse()
 
 	// Get remaining arguments as APK files
 	apkFiles := flag.Args()
+
+	// If no additional args but apkPath is set, use that
+	if len(apkFiles) == 0 && apkPath != "" {
+		apkFiles = []string{apkPath}
+	}
 
 	// Validate we have at least one APK file
 	if len(apkFiles) == 0 {
@@ -66,7 +74,7 @@ func main() {
 	printBanner()
 
 	// Create output directory
-	if err := os.MkdirAll(*outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		fmt.Printf("%sError creating output directory: %v%s\n", utils.ColorRed, err, utils.ColorEnd)
 		os.Exit(1)
 	}
@@ -76,9 +84,9 @@ func main() {
 	var wg sync.WaitGroup
 
 	// Start worker goroutines
-	for i := 0; i < *workers; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go worker(i, jobs, &wg, *outputDir, *patternsFile, *webhook)
+		go worker(i, jobs, &wg, outputDir, patternsPath, webhookURL, taskHijacking)
 	}
 
 	// Queue jobs
@@ -95,36 +103,44 @@ func main() {
 	wg.Wait()
 }
 
-func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsFile, webhook string) {
+func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsPath, webhookURL string, taskHijacking bool) {
 	defer wg.Done()
 
 	for apkFile := range jobs {
-		fmt.Printf("%s[Worker %d] Processing: %s%s\n", utils.ColorCyan, id, filepath.Base(apkFile), utils.ColorEnd)
-		
+		fmt.Printf("\n%s╭─ Worker %d ─╮%s\n", utils.ColorCyan, id, utils.ColorEnd)
+		fmt.Printf("%s│ Processing: %s%s\n", utils.ColorCyan, filepath.Base(apkFile), utils.ColorEnd)
+		fmt.Printf("%s╰───────────╯%s\n", utils.ColorCyan, utils.ColorEnd)
+
 		// Create output file path based on APK name
 		baseName := filepath.Base(apkFile)
 		nameWithoutExt := strings.TrimSuffix(baseName, filepath.Ext(baseName))
-		// Clean the filename to avoid special characters
 		cleanName := cleanFileName(nameWithoutExt)
 		outputFile := filepath.Join(outputDir, cleanName+"-apkx.json")
 
 		config := analyzer.Config{
-			APKFile:      apkFile,
-			OutputFile:   outputFile,
-			PatternsFile: patternsFile,
-			Webhook:      webhook,
+			APKPath:        apkFile,
+			OutputDir:      outputDir,
+			PatternsPath:   patternsPath,
+			Workers:        id + 1,
+			WebhookURL:     webhookURL,
+			TaskHijackOnly: taskHijacking,
 		}
 
 		scanner := analyzer.NewAPKScanner(&config)
 		if err := scanner.Run(); err != nil {
-			fmt.Printf("%s[Worker %d] Error processing %s: %v%s\n", 
-				utils.ColorRed, id, filepath.Base(apkFile), err, utils.ColorEnd)
+			fmt.Printf("\n%s╭─ Error ─╮%s\n", utils.ColorRed, utils.ColorEnd)
+			fmt.Printf("%s│ Worker %d: Failed to process %s%s\n",
+				utils.ColorRed, id, filepath.Base(apkFile), utils.ColorEnd)
+			fmt.Printf("%s│ Error: %v%s\n", utils.ColorRed, err, utils.ColorEnd)
+			fmt.Printf("%s╰─────────╯%s\n", utils.ColorRed, utils.ColorEnd)
 			continue
 		}
 
 		if absPath, err := filepath.Abs(outputFile); err == nil {
-			fmt.Printf("%s[Worker %d] Results saved to: %s%s\n", 
-				utils.ColorGreen, id, absPath, utils.ColorEnd)
+			fmt.Printf("\n%s╭─ Success ─╮%s\n", utils.ColorGreen, utils.ColorEnd)
+			fmt.Printf("%s│ Results saved to: %s%s\n",
+				utils.ColorGreen, absPath, utils.ColorEnd)
+			fmt.Printf("%s╰───────────╯%s\n", utils.ColorGreen, utils.ColorEnd)
 		}
 	}
 }
@@ -146,14 +162,14 @@ func cleanFileName(name string) string {
 		".", "-",
 	)
 	cleaned := replacer.Replace(name)
-	
+
 	// Remove any double dashes
 	for strings.Contains(cleaned, "--") {
 		cleaned = strings.ReplaceAll(cleaned, "--", "-")
 	}
-	
+
 	// Trim dashes from start and end
 	cleaned = strings.Trim(cleaned, "-")
-	
+
 	return cleaned
 }

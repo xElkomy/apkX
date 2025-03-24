@@ -20,13 +20,12 @@ import (
 )
 
 type Config struct {
-	APKFile      string // Path to the APK file
-	OutputFile   string // Path to save results
-	PatternsFile string // Path to patterns file
-	JadxArgs     string // Additional jadx arguments
-	JSON         bool   // Save as JSON format
-	Verbose      bool   // Enable verbose output
-	Webhook      string // Add webhook field
+	APKPath        string
+	OutputDir      string
+	PatternsPath   string
+	Workers        int
+	WebhookURL     string
+	TaskHijackOnly bool
 }
 
 type APKScanner struct {
@@ -37,7 +36,12 @@ type APKScanner struct {
 	resultsMu sync.Mutex
 	apkPkg    string
 	cacheDir  string
-	mu        sync.Mutex // Add mutex for thread safety
+	mu        sync.Mutex
+	analyzers []AnalyzerInterface
+}
+
+type AnalyzerInterface interface {
+	Analyze(decompileDir string) ([]string, error)
 }
 
 type Pattern struct {
@@ -55,6 +59,9 @@ func NewAPKScanner(config *Config) *APKScanner {
 	return &APKScanner{
 		config:  config,
 		results: make(map[string][]string),
+		analyzers: []AnalyzerInterface{
+			NewTaskHijackingAnalyzer(),
+		},
 	}
 }
 
@@ -69,6 +76,44 @@ func (s *APKScanner) Run() error {
 		return fmt.Errorf("failed to decompile APK: %v", err)
 	}
 
+	// If task hijacking only mode is enabled, skip pattern scanning
+	if s.config.TaskHijackOnly {
+		fmt.Printf("%s** Scanning for Task Hijacking vulnerabilities...%s\n",
+			utils.ColorBlue, utils.ColorEnd)
+
+		analyzer := NewTaskHijackingAnalyzer()
+		findings, err := analyzer.Analyze(s.tempDir)
+		if err != nil {
+			return fmt.Errorf("task hijacking analysis failed: %v", err)
+		}
+
+		// Print findings
+		fmt.Printf("\n%s=== Task Hijacking Analysis Results ===%s\n",
+			utils.ColorGreen, utils.ColorEnd)
+
+		if len(findings) == 0 || (len(findings) == 1 && findings[0] == "No activities vulnerable to task hijacking were found.") {
+			fmt.Printf("%sNo task hijacking vulnerabilities found.%s\n",
+				utils.ColorGreen, utils.ColorEnd)
+		} else {
+			fmt.Printf("%sFound potential task hijacking vulnerabilities:%s\n",
+				utils.ColorRed, utils.ColorEnd)
+			for _, finding := range findings {
+				fmt.Println(finding)
+				fmt.Println("---")
+			}
+		}
+
+		// Save results if output directory is specified
+		if s.config.OutputDir != "" {
+			results := map[string][]string{
+				"Task Hijacking Vulnerabilities": findings,
+			}
+			return s.saveResults(results)
+		}
+
+		return nil
+	}
+
 	// Load patterns
 	patterns, err := s.loadPatterns()
 	if err != nil {
@@ -79,14 +124,14 @@ func (s *APKScanner) Run() error {
 	results := make(map[string][]string)
 	resultsMu := sync.Mutex{}
 	var wg sync.WaitGroup
-	
+
 	// Collect all files first
 	var filesToProcess []string
 	err = filepath.Walk(s.tempDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
-		
+
 		if !info.IsDir() && isRelevantFile(path) {
 			filesToProcess = append(filesToProcess, path)
 		}
@@ -101,12 +146,12 @@ func (s *APKScanner) Run() error {
 
 	// Process files in batches to control concurrency
 	semaphore := make(chan struct{}, 10) // Limit concurrent goroutines
-	
+
 	for _, path := range filesToProcess {
 		wg.Add(1)
 		go func(filePath string) {
 			defer wg.Done()
-			semaphore <- struct{}{} // Acquire
+			semaphore <- struct{}{}        // Acquire
 			defer func() { <-semaphore }() // Release
 
 			matches := s.processFile(filePath, patterns)
@@ -125,20 +170,36 @@ func (s *APKScanner) Run() error {
 	// Wait for all goroutines to complete
 	wg.Wait()
 
+	// Run additional security analyzers
+	for _, analyzer := range s.analyzers {
+		findings, err := analyzer.Analyze(s.tempDir)
+		if err != nil {
+			fmt.Printf("%sWarning: Analyzer error: %v%s\n",
+				utils.ColorWarning, err, utils.ColorEnd)
+			continue
+		}
+
+		if len(findings) > 0 {
+			s.resultsMu.Lock()
+			s.results["Task Hijacking Analysis"] = findings
+			s.resultsMu.Unlock()
+		}
+	}
+
 	// Save results
 	return s.saveResults(results)
 }
 
 func (s *APKScanner) validateAPK() error {
-	if _, err := os.Stat(s.config.APKFile); os.IsNotExist(err) {
-		return fmt.Errorf("APK file does not exist: %s", s.config.APKFile)
+	if _, err := os.Stat(s.config.APKPath); os.IsNotExist(err) {
+		return fmt.Errorf("APK file does not exist: %s", s.config.APKPath)
 	}
-	s.apkPkg = filepath.Base(s.config.APKFile)
+	s.apkPkg = filepath.Base(s.config.APKPath)
 	return nil
 }
 
 func (s *APKScanner) loadPatterns() (map[string][]string, error) {
-	data, err := os.ReadFile(s.config.PatternsFile)
+	data, err := os.ReadFile(s.config.PatternsPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read patterns file: %v", err)
 	}
@@ -224,7 +285,7 @@ func (s *APKScanner) processFile(path string, patterns map[string][]string) map[
 			for _, idx := range allIndexes {
 				match := contentStr[idx[0]:idx[1]]
 				match = strings.TrimSpace(match)
-				
+
 				if match == "" || seen[match] {
 					continue
 				}
@@ -283,7 +344,7 @@ func (s *APKScanner) getCacheDir() string {
 }
 
 func (s *APKScanner) getApkHash() (string, error) {
-	f, err := os.Open(s.config.APKFile)
+	f, err := os.Open(s.config.APKPath)
 	if err != nil {
 		return "", err
 	}
@@ -318,7 +379,7 @@ func (s *APKScanner) decompileAPK() error {
 	// Check if cached version exists
 	cachedDir := filepath.Join(s.cacheDir, hash)
 	if _, err := os.Stat(cachedDir); err == nil {
-		fmt.Printf("%s** Found cached decompiled APK, skipping decompilation...%s\n", 
+		fmt.Printf("%s** Found cached decompiled APK, skipping decompilation...%s\n",
 			utils.ColorBlue, utils.ColorEnd)
 		s.tempDir = cachedDir
 		return nil
@@ -331,19 +392,19 @@ func (s *APKScanner) decompileAPK() error {
 	}
 
 	// Initialize decompiler
-	jadx, err := decompiler.NewJadx()
+	decompiler, err := decompiler.NewJadx()
 	if err != nil {
 		os.RemoveAll(tempDir)
 		return fmt.Errorf("failed to initialize jadx: %v", err)
 	}
 
 	// Decompile APK
-	fmt.Printf("%s** Decompiling APK (this may take a while)...%s\n", 
+	fmt.Printf("%s** Decompiling APK (this may take a while)...%s\n",
 		utils.ColorBlue, utils.ColorEnd)
-	if err := jadx.Decompile(s.config.APKFile, tempDir, s.config.JadxArgs); err != nil {
+	if err := decompiler.Decompile(s.config.APKPath, tempDir, ""); err != nil {
 		// Check if we have any decompiled files before giving up
 		if _, statErr := os.Stat(filepath.Join(tempDir, "sources")); statErr == nil {
-			fmt.Printf("%s** Some decompilation errors occurred, but continuing with available files...%s\n", 
+			fmt.Printf("%s** Some decompilation errors occurred, but continuing with available files...%s\n",
 				utils.ColorWarning, utils.ColorEnd)
 		} else {
 			os.RemoveAll(tempDir)
@@ -418,7 +479,7 @@ func copyFile(src, dst string) error {
 }
 
 func (s *APKScanner) sendToDiscord(filePath string) error {
-	if s.config.Webhook == "" {
+	if s.config.WebhookURL == "" {
 		return nil
 	}
 
@@ -449,7 +510,7 @@ func (s *APKScanner) sendToDiscord(filePath string) error {
 	writer.Close()
 
 	// Create and send request
-	req, err := http.NewRequest("POST", s.config.Webhook, body)
+	req, err := http.NewRequest("POST", s.config.WebhookURL, body)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %v", err)
 	}
@@ -467,7 +528,7 @@ func (s *APKScanner) sendToDiscord(filePath string) error {
 		return fmt.Errorf("webhook request failed with status: %d", resp.StatusCode)
 	}
 
-	fmt.Printf("%sResults sent to Discord webhook successfully%s\n", 
+	fmt.Printf("%sResults sent to Discord webhook successfully%s\n",
 		utils.ColorGreen, utils.ColorEnd)
 	return nil
 }
@@ -475,7 +536,7 @@ func (s *APKScanner) sendToDiscord(filePath string) error {
 func (s *APKScanner) saveResults(results map[string][]string) error {
 	// Create statistics map for different finding types
 	stats := make(map[string]int)
-	
+
 	// Count findings by category
 	for category, matches := range results {
 		if len(matches) > 0 {
@@ -488,31 +549,31 @@ func (s *APKScanner) saveResults(results map[string][]string) error {
 	if len(stats) == 0 {
 		fmt.Printf("%sNo sensitive information found.%s\n", utils.ColorYellow, utils.ColorEnd)
 	} else {
-		fmt.Printf("%sFound sensitive information in %d categories:%s\n", 
+		fmt.Printf("%sFound sensitive information in %d categories:%s\n",
 			utils.ColorBlue, len(stats), utils.ColorEnd)
-		
+
 		for category, count := range stats {
 			fmt.Printf("  • %s: %d findings\n", category, count)
 		}
 	}
 
 	// Save detailed results to JSON file
-	if s.config.OutputFile != "" {
+	if s.config.OutputDir != "" {
 		jsonData, err := json.MarshalIndent(results, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal results to JSON: %v", err)
 		}
 
-		if err := os.WriteFile(s.config.OutputFile, jsonData, 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(s.config.OutputDir, "results.json"), jsonData, 0644); err != nil {
 			return fmt.Errorf("failed to write results to file: %v", err)
 		}
-		fmt.Printf("\n%sDetailed results saved to: %s%s%s\n", 
-			utils.ColorBlue, utils.ColorGreen, s.config.OutputFile, utils.ColorEnd)
+		fmt.Printf("\n%sDetailed results saved to: %s%s%s\n",
+			utils.ColorBlue, utils.ColorGreen, filepath.Join(s.config.OutputDir, "results.json"), utils.ColorEnd)
 	}
 
 	// After saving the file, send to Discord if webhook is configured
-	if s.config.Webhook != "" {
-		if err := s.sendToDiscord(s.config.OutputFile); err != nil {
+	if s.config.WebhookURL != "" {
+		if err := s.sendToDiscord(filepath.Join(s.config.OutputDir, "results.json")); err != nil {
 			fmt.Printf("%sWarning: Failed to send results to Discord: %v%s\n",
 				utils.ColorYellow, err, utils.ColorEnd)
 		}
@@ -547,25 +608,25 @@ func isRelevantFile(filename string) bool {
 
 	// Focus on files that typically contain sensitive information
 	relevantExts := []string{
-		".java",   // Java source
-		".kt",     // Kotlin source
-		".xml",    // Configuration files
-		".txt",    // Text files
-		".json",   // JSON data
-		".yaml",   // YAML data
-		".yml",    // YAML data
+		".java",       // Java source
+		".kt",         // Kotlin source
+		".xml",        // Configuration files
+		".txt",        // Text files
+		".json",       // JSON data
+		".yaml",       // YAML data
+		".yml",        // YAML data
 		".properties", // Properties files
-		".conf",   // Configuration files
-		".config", // Configuration files
-		".plist", // iOS/macOS property lists
-		".db",    // Databases
-		".sql",   // SQL files
-		".env",   // Environment files
-		".ini",   // INI configuration
-		".html",  // HTML files
-		".js",    // JavaScript files
-		".php",   // PHP files
-		".py",    // Python files
+		".conf",       // Configuration files
+		".config",     // Configuration files
+		".plist",      // iOS/macOS property lists
+		".db",         // Databases
+		".sql",        // SQL files
+		".env",        // Environment files
+		".ini",        // INI configuration
+		".html",       // HTML files
+		".js",         // JavaScript files
+		".php",        // PHP files
+		".py",         // Python files
 	}
 
 	ext := strings.ToLower(filepath.Ext(filename))
