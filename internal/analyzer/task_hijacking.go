@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/cyinnove/apkX/internal/utils"
 )
@@ -29,6 +30,10 @@ type TaskHijackingAnalyzer struct{}
 
 func NewTaskHijackingAnalyzer() *TaskHijackingAnalyzer {
 	return &TaskHijackingAnalyzer{}
+}
+
+func (a *TaskHijackingAnalyzer) SetAPKPath(apkPath string) {
+	// Not needed for task hijacking analyzer
 }
 
 func (a *TaskHijackingAnalyzer) Analyze(decompileDir string) ([]string, error) {
@@ -58,13 +63,7 @@ func (a *TaskHijackingAnalyzer) Analyze(decompileDir string) ([]string, error) {
 
 	var findings []string
 	var vulnerableCount int
-
-	// Add summary header
-	findings = append(findings, fmt.Sprintf(`
-%s╭───────────────────────────────────────────────╮
-│         Task Hijacking Vulnerability Scan       │
-╰───────────────────────────────────────────────╯%s
-`, utils.ColorCyan, utils.ColorEnd))
+	var vulnerableActivities []string
 
 	for _, activity := range manifest.Application.Activities {
 		if activity.LaunchMode == "singleTask" || activity.LaunchMode == "2" {
@@ -81,7 +80,7 @@ func (a *TaskHijackingAnalyzer) Analyze(decompileDir string) ([]string, error) {
 				exportStatus = "public"
 			}
 
-			finding := fmt.Sprintf(`
+			activityInfo := fmt.Sprintf(`
 %s╭─ Vulnerable Activity #%d ─%s
 │ 
 │  %s[%s]%s Task Hijacking Vulnerability
@@ -95,18 +94,6 @@ func (a *TaskHijackingAnalyzer) Analyze(decompileDir string) ([]string, error) {
 │    • %s risk due to %s export status
 │    • Vulnerable to task hijacking attacks
 │
-│  %s❯ Impact:%s
-│    • Malicious apps can inject activities into the task stack
-│    • Potential information disclosure
-│    • Possible phishing attacks through UI overlay
-│
-│  %s❯ Recommendation:%s
-│    • Change launch mode to "standard" if possible
-│    • If singleTask is required:
-│      - Implement task affinity checks
-│      - Use FLAG_ACTIVITY_NEW_TASK with FLAG_ACTIVITY_CLEAR_TOP
-│      - Add additional security validations
-│
 ╰────────────────────────────────────────────────`,
 				utils.ColorCyan, vulnerableCount, utils.ColorEnd,
 				severityColor, severity, utils.ColorEnd,
@@ -115,25 +102,36 @@ func (a *TaskHijackingAnalyzer) Analyze(decompileDir string) ([]string, error) {
 				utils.ColorGreen, utils.ColorEnd,
 				severity,
 				exportStatus,
-				utils.ColorGreen, utils.ColorEnd,
 				utils.ColorGreen, utils.ColorEnd)
-			findings = append(findings, finding)
+			vulnerableActivities = append(vulnerableActivities, activityInfo)
 		}
 	}
 
-	// Add summary footer
+	// Create a single finding with all information
 	if vulnerableCount == 0 {
 		findings = append(findings, fmt.Sprintf(`
 %s╭───────────────────────────────────────────────╮
+│         Task Hijacking Vulnerability Scan       │
+╰───────────────────────────────────────────────╯%s
+
+%s╭───────────────────────────────────────────────╮
 │     ✓ No Task Hijacking Vulnerabilities Found   │
 ╰───────────────────────────────────────────────╯%s
-`, utils.ColorGreen, utils.ColorEnd))
+`, utils.ColorCyan, utils.ColorEnd, utils.ColorGreen, utils.ColorEnd))
 	} else {
-		findings = append(findings, fmt.Sprintf(`
+		// Combine all activities into a single finding
+		combinedFinding := fmt.Sprintf(`
+%s╭───────────────────────────────────────────────╮
+│         Task Hijacking Vulnerability Scan       │
+╰───────────────────────────────────────────────╯%s
+%s
 %s╭───────────────────────────────────────────────╮
 │     ⚠ Found %d Task Hijacking Vulnerabilities   │
 ╰───────────────────────────────────────────────╯%s
-`, utils.ColorRed, vulnerableCount, utils.ColorEnd))
+`, utils.ColorCyan, utils.ColorEnd,
+			strings.Join(vulnerableActivities, "\n"),
+			utils.ColorRed, vulnerableCount, utils.ColorEnd)
+		findings = append(findings, combinedFinding)
 	}
 
 	return findings, nil

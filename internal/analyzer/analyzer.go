@@ -13,8 +13,10 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cyinnove/apkX/internal/decompiler"
+	"github.com/cyinnove/apkX/internal/reporter"
 	"github.com/cyinnove/apkX/internal/utils"
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +28,8 @@ type Config struct {
 	Workers        int
 	WebhookURL     string
 	TaskHijackOnly bool
+	HTMLOutput     bool
+	JanusScan      bool
 }
 
 type APKScanner struct {
@@ -42,6 +46,7 @@ type APKScanner struct {
 
 type AnalyzerInterface interface {
 	Analyze(decompileDir string) ([]string, error)
+	SetAPKPath(apkPath string)
 }
 
 type Pattern struct {
@@ -56,12 +61,21 @@ type PatternsConfig struct {
 }
 
 func NewAPKScanner(config *Config) *APKScanner {
+	analyzers := []AnalyzerInterface{
+		NewTaskHijackingAnalyzer(),
+		NewInsecureStorageAnalyzer(),
+		NewCertificatePinningAnalyzer(),
+		NewDebugModeAnalyzer(),
+	}
+
+	if config.JanusScan {
+		analyzers = append(analyzers, NewJanusVulnerabilityAnalyzer())
+	}
+
 	return &APKScanner{
-		config:  config,
-		results: make(map[string][]string),
-		analyzers: []AnalyzerInterface{
-			NewTaskHijackingAnalyzer(),
-		},
+		config:    config,
+		results:   make(map[string][]string),
+		analyzers: analyzers,
 	}
 }
 
@@ -172,6 +186,9 @@ func (s *APKScanner) Run() error {
 
 	// Run additional security analyzers
 	for _, analyzer := range s.analyzers {
+		// Set APK path for analyzers that need it
+		analyzer.SetAPKPath(s.config.APKPath)
+
 		findings, err := analyzer.Analyze(s.tempDir)
 		if err != nil {
 			fmt.Printf("%sWarning: Analyzer error: %v%s\n",
@@ -180,9 +197,11 @@ func (s *APKScanner) Run() error {
 		}
 
 		if len(findings) > 0 {
-			s.resultsMu.Lock()
-			s.results["Task Hijacking Analysis"] = findings
-			s.resultsMu.Unlock()
+			// Use analyzer type name as category
+			analyzerType := fmt.Sprintf("%T", analyzer)
+			categoryName := strings.TrimPrefix(analyzerType, "*analyzer.")
+			categoryName = strings.TrimSuffix(categoryName, "Analyzer")
+			results[categoryName] = findings
 		}
 	}
 
@@ -564,22 +583,170 @@ func (s *APKScanner) saveResults(results map[string][]string) error {
 			return fmt.Errorf("failed to marshal results to JSON: %v", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(s.config.OutputDir, "results.json"), jsonData, 0644); err != nil {
+		jsonPath := filepath.Join(s.config.OutputDir, "results.json")
+		if err := os.WriteFile(jsonPath, jsonData, 0644); err != nil {
 			return fmt.Errorf("failed to write results to file: %v", err)
 		}
 		fmt.Printf("\n%sDetailed results saved to: %s%s%s\n",
-			utils.ColorBlue, utils.ColorGreen, filepath.Join(s.config.OutputDir, "results.json"), utils.ColorEnd)
-	}
+			utils.ColorBlue, utils.ColorGreen, jsonPath, utils.ColorEnd)
 
-	// After saving the file, send to Discord if webhook is configured
-	if s.config.WebhookURL != "" {
-		if err := s.sendToDiscord(filepath.Join(s.config.OutputDir, "results.json")); err != nil {
-			fmt.Printf("%sWarning: Failed to send results to Discord: %v%s\n",
-				utils.ColorYellow, err, utils.ColorEnd)
+		// Generate HTML report if requested
+		if s.config.HTMLOutput {
+			if err := s.generateHTMLReport(results, jsonPath); err != nil {
+				fmt.Printf("%sWarning: Failed to generate HTML report: %v%s\n",
+					utils.ColorYellow, err, utils.ColorEnd)
+			}
+		}
+
+		// After saving the file, send to Discord if webhook is configured
+		if s.config.WebhookURL != "" {
+			if err := s.sendToDiscord(jsonPath); err != nil {
+				fmt.Printf("%sWarning: Failed to send results to Discord: %v%s\n",
+					utils.ColorYellow, err, utils.ColorEnd)
+			}
 		}
 	}
 
 	return nil
+}
+
+func (s *APKScanner) generateHTMLReport(results map[string][]string, jsonPath string) error {
+	// Prepare HTML report data
+	reportData := reporter.HTMLReportData{
+		APKName:       filepath.Base(s.config.APKPath),
+		ScanTime:      time.Now().Format("2006-01-02 15:04:05"),
+		TotalFindings: s.countTotalFindings(results),
+		Categories:    s.prepareCategoriesData(results),
+		Summary:       s.prepareSummaryData(results),
+	}
+
+	// Generate HTML report
+	htmlPath := filepath.Join(s.config.OutputDir, "security-report.html")
+	if err := reporter.GenerateHTMLReport(reportData, htmlPath); err != nil {
+		return fmt.Errorf("failed to generate HTML report: %v", err)
+	}
+
+	fmt.Printf("%sHTML report generated: %s%s%s\n",
+		utils.ColorBlue, utils.ColorGreen, htmlPath, utils.ColorEnd)
+	return nil
+}
+
+func (s *APKScanner) countTotalFindings(results map[string][]string) int {
+	total := 0
+	for _, findings := range results {
+		total += len(findings)
+	}
+	return total
+}
+
+func (s *APKScanner) prepareCategoriesData(results map[string][]string) map[string]reporter.CategoryData {
+	categories := make(map[string]reporter.CategoryData)
+
+	for category, findings := range results {
+		if len(findings) == 0 {
+			continue
+		}
+
+		var findingData []reporter.FindingData
+		for _, finding := range findings {
+			// Parse finding string to extract file, match, and context
+			// Format: "file: match (Context: ...context...)"
+			parts := strings.Split(finding, ": ")
+			if len(parts) >= 2 {
+				file := parts[0]
+				remaining := strings.Join(parts[1:], ": ")
+				match := remaining
+				context := ""
+
+				// Extract context if present
+				if strings.Contains(remaining, " (Context: ") {
+					contextStart := strings.Index(remaining, " (Context: ")
+					context = remaining[contextStart+11 : len(remaining)-1]
+					match = remaining[:contextStart]
+				}
+
+				// Clean up the context - remove extra whitespace and newlines
+				context = strings.TrimSpace(context)
+
+				// Replace common patterns with better formatting
+				context = strings.ReplaceAll(context, "❯ Description:", "\n❯ Description:")
+				context = strings.ReplaceAll(context, "❯ Impact:", "\n❯ Impact:")
+				context = strings.ReplaceAll(context, "❯ Recommendation:", "\n❯ Recommendation:")
+				context = strings.ReplaceAll(context, "❯ Files:", "\n❯ Files:")
+				context = strings.ReplaceAll(context, "• ", "\n• ")
+				context = strings.ReplaceAll(context, "│ ", "\n│ ")
+
+				// Clean up extra whitespace
+				context = strings.ReplaceAll(context, "\n ", "\n")
+				context = strings.ReplaceAll(context, "\n\n", "\n")
+				context = strings.TrimSpace(context)
+
+				findingData = append(findingData, reporter.FindingData{
+					File:    file,
+					Match:   strings.TrimSpace(match),
+					Context: context,
+				})
+			}
+		}
+
+		categories[category] = reporter.CategoryData{
+			Name:     category,
+			Count:    len(findings),
+			Findings: findingData,
+		}
+	}
+
+	return categories
+}
+
+func (s *APKScanner) prepareSummaryData(results map[string][]string) reporter.SummaryData {
+	// Count files processed (this is an approximation)
+	totalFiles := 0
+	filepath.Walk(s.tempDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() && isRelevantFile(path) {
+			totalFiles++
+		}
+		return nil
+	})
+
+	// Count patterns loaded
+	totalPatterns := len(s.patterns)
+
+	// Count vulnerabilities and risk levels
+	vulnerabilities := 0
+	highRisk := 0
+	mediumRisk := 0
+	lowRisk := 0
+
+	for category, findings := range results {
+		if len(findings) == 0 {
+			continue
+		}
+
+		vulnerabilities += len(findings)
+
+		// Determine risk level based on category name
+		categoryLower := strings.ToLower(category)
+		if strings.Contains(categoryLower, "high") || strings.Contains(categoryLower, "critical") {
+			highRisk += len(findings)
+		} else if strings.Contains(categoryLower, "medium") {
+			mediumRisk += len(findings)
+		} else {
+			lowRisk += len(findings)
+		}
+	}
+
+	return reporter.SummaryData{
+		TotalFiles:      totalFiles,
+		TotalPatterns:   totalPatterns,
+		Vulnerabilities: vulnerabilities,
+		HighRisk:        highRisk,
+		MediumRisk:      mediumRisk,
+		LowRisk:         lowRisk,
+	}
 }
 
 // Helper function to filter relevant files

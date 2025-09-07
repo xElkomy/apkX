@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version = "v1.4.0" // Added Discord webhook integration
+	version = "v2.0.0" // Added HTML output, Janus vulnerability detection, and additional security checks
 )
 
 func printBanner() {
@@ -46,6 +46,8 @@ func main() {
 		workers       int
 		webhookURL    string
 		taskHijacking bool
+		htmlOutput    bool
+		janusScan     bool
 	)
 
 	flag.StringVar(&apkPath, "apk", "", "Path to APK file")
@@ -54,6 +56,8 @@ func main() {
 	flag.IntVar(&workers, "w", 3, "Number of concurrent workers")
 	flag.StringVar(&webhookURL, "wh", "", "Discord webhook URL to send results")
 	flag.BoolVar(&taskHijacking, "task-hijacking", false, "Only scan for task hijacking vulnerabilities")
+	flag.BoolVar(&htmlOutput, "html", false, "Generate HTML report")
+	flag.BoolVar(&janusScan, "janus", false, "Enable Janus vulnerability scanning")
 	flag.Parse()
 
 	// Get remaining arguments as APK files
@@ -86,7 +90,7 @@ func main() {
 	// Start worker goroutines
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go worker(i, jobs, &wg, outputDir, patternsPath, webhookURL, taskHijacking)
+		go worker(i, jobs, &wg, outputDir, patternsPath, webhookURL, taskHijacking, htmlOutput, janusScan)
 	}
 
 	// Queue jobs
@@ -103,7 +107,7 @@ func main() {
 	wg.Wait()
 }
 
-func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsPath, webhookURL string, taskHijacking bool) {
+func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsPath, webhookURL string, taskHijacking, htmlOutput, janusScan bool) {
 	defer wg.Done()
 
 	for apkFile := range jobs {
@@ -124,6 +128,8 @@ func worker(id int, jobs <-chan string, wg *sync.WaitGroup, outputDir, patternsP
 			Workers:        id + 1,
 			WebhookURL:     webhookURL,
 			TaskHijackOnly: taskHijacking,
+			HTMLOutput:     htmlOutput,
+			JanusScan:      janusScan,
 		}
 
 		scanner := analyzer.NewAPKScanner(&config)
