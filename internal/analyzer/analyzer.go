@@ -16,9 +16,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cyinnove/apkX/internal/decompiler"
-	"github.com/cyinnove/apkX/internal/reporter"
-	"github.com/cyinnove/apkX/internal/utils"
+	"github.com/h0tak88r/apkX/internal/decompiler"
+	"github.com/h0tak88r/apkX/internal/reporter"
+	"github.com/h0tak88r/apkX/internal/utils"
 	"gopkg.in/yaml.v3"
 )
 

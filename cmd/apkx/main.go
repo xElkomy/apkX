@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cyinnove/apkX/internal/analyzer"
-	"github.com/cyinnove/apkX/internal/utils"
+	"github.com/h0tak88r/apkX/internal/analyzer"
+	"github.com/h0tak88r/apkX/internal/utils"
 )
 
 const (
