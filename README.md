@@ -6,6 +6,7 @@ Advanced APK analysis tool with intelligent caching, pattern matching, and compr
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![GitHub Actions](https://img.shields.io/badge/github-actions-blue.svg)
 ![Version](https://img.shields.io/badge/version-v2.0.0-orange.svg)
+[![Build and Release](https://github.com/h0tak88r/apkX/actions/workflows/build.yml/badge.svg)](https://github.com/h0tak88r/apkX/actions/workflows/build.yml)
 
 ## Features ✨
 
@@ -51,7 +52,7 @@ Advanced APK analysis tool with intelligent caching, pattern matching, and compr
 ## Installation 📦
 ```bash
 # Clone the repository
-git clone https://github.com/cyinnove/apkX.git
+git clone https:///apkX.git
 cd apkX
 
 # Build the binary

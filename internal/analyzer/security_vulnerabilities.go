@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/cyinnove/apkX/internal/utils"
+	"github.com/h0tak88r/apkX/internal/utils"
 )
 
 // InsecureStorageAnalyzer checks for insecure storage practices

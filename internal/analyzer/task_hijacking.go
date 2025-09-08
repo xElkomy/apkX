@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/cyinnove/apkX/internal/utils"
+	"github.com/h0tak88r/apkX/internal/utils"
 )
 
 type AndroidManifest struct {
