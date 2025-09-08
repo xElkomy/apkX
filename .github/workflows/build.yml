@@ -33,7 +33,9 @@ jobs:
           
           # Copy common files to each directory
           for dir in dist/*; do
-            cp -r README.md LICENSE config "$dir/" || true
+            cp README.md "$dir/" || true
+            cp LICENSE "$dir/" || true
+            cp -r config "$dir/" || true
           done
 
       - name: Build Binaries
