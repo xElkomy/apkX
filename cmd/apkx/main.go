@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	version = "v2.0.0" // Added HTML output, Janus vulnerability detection, and additional security checks
+	version = "v2.1.0" // Enhanced Discord integration with both JSON and HTML reports
 )
 
 func printBanner() {
