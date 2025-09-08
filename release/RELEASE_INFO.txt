@@ -1,0 +1,28 @@
+apkX v2.0.0 Cross-Platform Release
+==================================
+
+Build Date: Tue Sep  9 01:40:48 EEST 2025
+Go Version: go version go1.23.5 darwin/arm64
+Build Host: Darwin arm64
+
+Available Binaries:
+- apkx-linux-amd64 (Linux x86_64)
+- apkx-linux-arm64 (Linux ARM64)
+- apkx-darwin-amd64 (macOS x86_64)
+- apkx-darwin-arm64 (macOS ARM64/Apple Silicon)
+- apkx-windows-amd64.exe (Windows x86_64)
+- apkx-windows-arm64.exe (Windows ARM64)
+
+Usage:
+1. Download the binary for your platform
+2. Make it executable (Unix systems): chmod +x apkx-*
+3. Run: ./apkx-* -h for help
+
+Features:
+- HTML report generation (-html)
+- Janus vulnerability detection (-janus)
+- Task hijacking analysis (-task-hijacking)
+- Comprehensive security analysis
+- Cross-platform compatibility
+
+For more information, visit: https://github.com/h0tak88r/apkX

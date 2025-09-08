@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -497,34 +498,51 @@ func copyFile(src, dst string) error {
 	return out.Close()
 }
 
-func (s *APKScanner) sendToDiscord(filePath string) error {
+func (s *APKScanner) sendToDiscord(jsonPath, htmlPath string) error {
 	if s.config.WebhookURL == "" {
 		return nil
 	}
 
-	file, err := os.Open(filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open results file: %v", err)
-	}
-	defer file.Close()
-
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Create form file
-	part, err := writer.CreateFormFile("file", filepath.Base(filePath))
+	// Add JSON file
+	jsonFile, err := os.Open(jsonPath)
 	if err != nil {
-		return fmt.Errorf("failed to create form file: %v", err)
+		return fmt.Errorf("failed to open JSON file: %v", err)
+	}
+	defer jsonFile.Close()
+
+	jsonPart, err := writer.CreateFormFile("file1", filepath.Base(jsonPath))
+	if err != nil {
+		return fmt.Errorf("failed to create JSON form file: %v", err)
 	}
 
-	// Copy file content to form field
-	_, err = io.Copy(part, file)
+	_, err = io.Copy(jsonPart, jsonFile)
 	if err != nil {
-		return fmt.Errorf("failed to copy file content: %v", err)
+		return fmt.Errorf("failed to copy JSON file content: %v", err)
+	}
+
+	// Add HTML file
+	htmlFile, err := os.Open(htmlPath)
+	if err != nil {
+		return fmt.Errorf("failed to open HTML file: %v", err)
+	}
+	defer htmlFile.Close()
+
+	htmlPart, err := writer.CreateFormFile("file2", filepath.Base(htmlPath))
+	if err != nil {
+		return fmt.Errorf("failed to create HTML form file: %v", err)
+	}
+
+	_, err = io.Copy(htmlPart, htmlFile)
+	if err != nil {
+		return fmt.Errorf("failed to copy HTML file content: %v", err)
 	}
 
 	// Add message field
-	_ = writer.WriteField("content", fmt.Sprintf("APK Analysis Results for: %s", s.apkPkg))
+	_ = writer.WriteField("content", fmt.Sprintf("APK Analysis Results for: %s\n\n📄 JSON Report: %s\n🌐 HTML Report: %s",
+		s.apkPkg, filepath.Base(jsonPath), filepath.Base(htmlPath)))
 
 	writer.Close()
 
@@ -600,7 +618,8 @@ func (s *APKScanner) saveResults(results map[string][]string) error {
 
 		// After saving the file, send to Discord if webhook is configured
 		if s.config.WebhookURL != "" {
-			if err := s.sendToDiscord(jsonPath); err != nil {
+			htmlPath := filepath.Join(s.config.OutputDir, "security-report.html")
+			if err := s.sendToDiscord(jsonPath, htmlPath); err != nil {
 				fmt.Printf("%sWarning: Failed to send results to Discord: %v%s\n",
 					utils.ColorYellow, err, utils.ColorEnd)
 			}
@@ -621,9 +640,14 @@ func (s *APKScanner) generateHTMLReport(results map[string][]string, jsonPath st
 	}
 
 	// Generate HTML report
-	htmlPath := filepath.Join(s.config.OutputDir, "security-report.html")
-	if err := reporter.GenerateHTMLReport(reportData, htmlPath); err != nil {
+	htmlContent, err := reporter.GenerateHTMLReport(reportData)
+	if err != nil {
 		return fmt.Errorf("failed to generate HTML report: %v", err)
+	}
+
+	htmlPath := filepath.Join(s.config.OutputDir, "security-report.html")
+	if err := ioutil.WriteFile(htmlPath, []byte(htmlContent), 0644); err != nil {
+		return fmt.Errorf("failed to write HTML report: %v", err)
 	}
 
 	fmt.Printf("%sHTML report generated: %s%s%s\n",
@@ -744,8 +768,6 @@ func (s *APKScanner) prepareSummaryData(results map[string][]string) reporter.Su
 		TotalPatterns:   totalPatterns,
 		Vulnerabilities: vulnerabilities,
 		HighRisk:        highRisk,
-		MediumRisk:      mediumRisk,
-		LowRisk:         lowRisk,
 	}
 }
 

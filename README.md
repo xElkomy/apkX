@@ -95,8 +95,8 @@ go build -o apkx cmd/apkx/main.go
 
 ### **Advanced Commands**
 ```bash
-# Send results to Discord
-./apkx -wh "https://discord.com/api/webhooks/your-webhook-url" app.apk
+# Send both JSON and HTML reports to Discord
+./apkx -html -janus -wh "https://discord.com/api/webhooks/your-webhook-url" app.apk
 
 # Full scan with custom output and workers
 ./apkx -html -janus -o results -w 8 -apk target.apk
@@ -159,7 +159,8 @@ The HTML report provides an interactive, beautiful visualization of all findings
 Send analysis results directly to your Discord channel:
 1. Create a webhook in your Discord server
 2. Use the `-wh` flag with your webhook URL
-3. Results will be sent as a file attachment with a summary message
+3. Both JSON and HTML reports will be sent as file attachments with a summary message
+4. JSON report for programmatic access and HTML report for human-readable visualization
 
 ## Cache Management 💾
 APK decompilations are cached in `~/.apkx/cache/` for faster repeated analysis:
