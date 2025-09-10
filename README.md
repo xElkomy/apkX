@@ -1,11 +1,11 @@
 # apkX 🔍⏱️
 
-Advanced APK analysis tool with intelligent caching, pattern matching, and comprehensive security vulnerability detection
+Advanced APK analysis tool with intelligent caching, pattern matching, comprehensive security vulnerability detection, and **web portal interface**
 
 ![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![GitHub Actions](https://img.shields.io/badge/github-actions-blue.svg)
-![Version](https://img.shields.io/badge/version-v2.0.0-orange.svg)
+![Version](https://img.shields.io/badge/version-v2.1.0-orange.svg)
 [![Build and Release](https://github.com/h0tak88r/apkX/actions/workflows/build.yml/badge.svg)](https://github.com/h0tak88r/apkX/actions/workflows/build.yml)
 
 ## Features ✨
@@ -44,6 +44,14 @@ Advanced APK analysis tool with intelligent caching, pattern matching, and compr
 - 💾 Efficient disk usage with SHA256-based caching
 - 🤖 Discord webhook integration for automated notifications
 
+### 🌐 **Web Portal Interface**
+- 🖥️ **Modern Web UI**: Beautiful, responsive web interface
+- 🌙 **Dark/Light Mode**: Toggle between themes with persistent preferences
+- 📤 **Drag & Drop Upload**: Easy APK file upload with progress tracking
+- 🔔 **Discord Integration**: Per-upload webhook configuration
+- 📊 **Report Management**: View and download all analysis reports
+- 📱 **Mobile Friendly**: Responsive design works on all devices
+
 ## Requirements 🛠️
 - Go 1.21+
 - Java 8+ (for JADX)
@@ -52,16 +60,38 @@ Advanced APK analysis tool with intelligent caching, pattern matching, and compr
 ## Installation 📦
 ```bash
 # Clone the repository
-git clone https:///apkX.git
+git clone https://github.com/h0tak88r/apkX.git
 cd apkX
 
-# Build the binary
+# Build the CLI binary
 go build -o apkx cmd/apkx/main.go
+
+# Build the web server
+go build -o apkx-web cmd/server/main.go
 ```
 
 ## Usage 🚀
 
-### **Basic Commands**
+### **🌐 Web Portal Interface (Recommended)**
+```bash
+# Start the web server
+./apkx-web -addr :9090
+
+# With Discord webhook (optional)
+./apkx-web -addr :9090 -webhook "https://discord.com/api/webhooks/XXX/YYY"
+
+# Using environment variable
+export DISCORD_WEBHOOK="https://discord.com/api/webhooks/XXX/YYY"
+./apkx-web -addr :9090
+```
+
+Then open `http://localhost:9090` in your browser to:
+- Upload APK files via drag & drop
+- Configure Discord webhooks per upload
+- View and download analysis reports
+- Toggle between dark/light themes
+
+### **📱 Command Line Interface**
 ```bash
 # Basic usage
 ./apkx [flags] <apk-file(s)>
@@ -112,6 +142,11 @@ go build -o apkx cmd/apkx/main.go
 - `-task-hijacking`: Enable task hijacking vulnerability scanning
 - `-html`: Generate HTML report (default: false)
 - `-janus`: Enable Janus vulnerability scanning (default: false)
+
+### **Web Server Flags**
+- `-addr`: HTTP listen address (default: ":9090")
+- `-webhook`: Default Discord webhook URL (optional)
+- `PORT`: Environment variable for port (e.g., `PORT=8080`)
 
 ## Security Vulnerability Detection 🛡️
 
@@ -208,6 +243,17 @@ Example JSON output:
 ```
 
 ## Changelog 📝
+
+### **v2.1.0** - Web Portal Release
+- 🌐 **NEW**: Web portal interface with modern UI
+- 🌙 **NEW**: Dark/Light mode toggle with persistent preferences
+- 📤 **NEW**: Drag & drop APK upload functionality
+- 🔔 **NEW**: Per-upload Discord webhook configuration
+- 📊 **NEW**: Web-based report management and viewing
+- 📱 **NEW**: Responsive design for mobile devices
+- ⚡ **NEW**: Web server with configurable port and webhook defaults
+- 🎨 **IMPROVED**: Enhanced UI/UX with smooth animations
+- 🔧 **IMPROVED**: Better error handling and user feedback
 
 ### **v2.0.0** - Major Update
 - ✨ Added HTML report generation with interactive visualization

@@ -1,0 +1,15 @@
+{
+  "CertificatePinning": [
+    "\n\u001b[36m╭─ Missing Certificate Pinning ─\u001b[0m\n│\n│  \u001b[33m[MEDIUM]\u001b[0m No Certificate Pinning Detected\n│\n│  \u001b[32m❯ Description:\u001b[0m\n│    • No certificate pinning implementation found\n│    • App vulnerable to man-in-the-middle attacks\n│    • SSL/TLS connections not properly secured\n│\n╰────────────────────────────────────────────────"
+  ],
+  "InsecureStorage": [
+    "\n\u001b[36m╭─ Insecure Storage: SharedPreferences ─\u001b[0m\n│\n│  \u001b[33m[LOW]\u001b[0m SharedPreferences Usage Detected\n│\n│  \u001b[32m❯ Description:\u001b[0m\n│    • SharedPreferences data is stored in plain text\n│    • No encryption applied to sensitive data\n│    • Data accessible to other apps with root access\n│\n│  \u001b[34m❯ Files:\u001b[0m\n    sources/org/noear/p000h5/dao/C0048c.java: getSharedPreferences(\n╰────────────────────────────────────────────────",
+    "\n\u001b[36m╭─ Insecure Storage: Unencrypted SQLite ─\u001b[0m\n│\n│  \u001b[33m[MEDIUM]\u001b[0m Unencrypted Database Usage\n│\n│  \u001b[32m❯ Description:\u001b[0m\n│    • SQLite database without encryption detected\n│    • Sensitive data stored in plain text\n│    • Database files accessible with root access\n│\n╰────────────────────────────────────────────────"
+  ],
+  "TaskHijacking": [
+    "\n\u001b[36m╭───────────────────────────────────────────────╮\n│         Task Hijacking Vulnerability Scan       │\n╰───────────────────────────────────────────────╯\u001b[0m\n\n\u001b[36m╭─ Vulnerable Activity #1 ─\u001b[0m\n│ \n│  \u001b[33m[MEDIUM]\u001b[0m Task Hijacking Vulnerability\n│\n│  Activity: \u001b[34morg.noear.p000h5.controller.WebActivity\u001b[0m\n│  Launch Mode: singleTask\n│  Exported: \u001b[34m\u001b[0m\n│\n│  \u001b[32m❯ Description:\u001b[0m\n│    • Activity configured with singleTask launch mode\n│    • MEDIUM risk due to non-public export status\n│    • Vulnerable to task hijacking attacks\n│\n╰────────────────────────────────────────────────%!(EXTRA string=\u001b[32m, string=\u001b[0m)\n\u001b[31m╭───────────────────────────────────────────────╮\n│     ⚠ Found 1 Task Hijacking Vulnerabilities   │\n╰───────────────────────────────────────────────╯\u001b[0m\n"
+  ],
+  "URLs": [
+    "sources/org/noear/p000h5/dao/C0048c.java: http://h5.noear.org/?f=xiaoku (Context: .../* renamed from: b */     public static String m144b() {         return m146b(\"sys_app_home_url\", \"http://h5.noear.org/?f=xiaoku\");     }      /* renamed from: b */     public static String m145b(String str) {         return m14...)"
+  ]
+}
