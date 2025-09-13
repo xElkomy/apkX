@@ -3,12 +3,16 @@ package reporter
 import (
 	"bytes"
 	"html/template"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 type HTMLReportData struct {
 	APKName         string
+	PackageName     string
+	Version         string
 	ScanTime        string
 	TotalFindings   int
 	Categories      map[string]CategoryData
@@ -88,6 +92,59 @@ func getSeverityIcon(severity string) string {
 	default:
 		return "ℹ️"
 	}
+}
+
+// ExtractPackageInfo extracts package name and version from AndroidManifest.xml
+func ExtractPackageInfo(decompileDir string) (packageName, version string) {
+	// Look for AndroidManifest.xml in common decompilation output locations
+	manifestPaths := []string{
+		filepath.Join(decompileDir, "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "sources", "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "resources", "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "res", "AndroidManifest.xml"),
+	}
+
+	var manifestPath string
+	for _, path := range manifestPaths {
+		if _, err := os.Stat(path); err == nil {
+			manifestPath = path
+			break
+		}
+	}
+
+	if manifestPath == "" {
+		return "", ""
+	}
+
+	// Read the AndroidManifest.xml file
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return "", ""
+	}
+
+	manifestContent := string(content)
+
+	// Extract package name
+	packageRegex := regexp.MustCompile(`package\s*=\s*["']([^"']+)["']`)
+	if matches := packageRegex.FindStringSubmatch(manifestContent); len(matches) > 1 {
+		packageName = matches[1]
+	}
+
+	// Extract version name
+	versionRegex := regexp.MustCompile(`android:versionName\s*=\s*["']([^"']+)["']`)
+	if matches := versionRegex.FindStringSubmatch(manifestContent); len(matches) > 1 {
+		version = matches[1]
+	}
+
+	// If version name not found, try version code
+	if version == "" {
+		versionCodeRegex := regexp.MustCompile(`android:versionCode\s*=\s*["']([^"']+)["']`)
+		if matches := versionCodeRegex.FindStringSubmatch(manifestContent); len(matches) > 1 {
+			version = "v" + matches[1]
+		}
+	}
+
+	return packageName, version
 }
 
 const htmlTemplate = `
@@ -690,6 +747,19 @@ const htmlTemplate = `
             line-height: 1.4;
             white-space: pre-wrap;
             color: var(--text-secondary);
+            max-height: 200px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .context-preview::after {
+            content: '...';
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            background: var(--bg-secondary);
+            padding: 0 8px;
+            color: var(--text-muted);
         }
         
         .context-toggle {
@@ -881,6 +951,8 @@ const htmlTemplate = `
                 <h1>🔍 APK Security Analysis Report</h1>
                 <div class="subtitle">
                     <strong>APK:</strong> {{.APKName}}<br>
+                    {{if .PackageName}}<strong>Package:</strong> {{.PackageName}}<br>{{end}}
+                    {{if .Version}}<strong>Version:</strong> {{.Version}}<br>{{end}}
                     <strong>Scan Time:</strong> {{.ScanTime}}<br>
                     <strong>Total Findings:</strong> {{.TotalFindings}}
                 </div>
@@ -1315,7 +1387,7 @@ const htmlTemplate = `
                 } else {
                     contextPreview.style.display = 'none';
                     contextFull.style.display = 'block';
-                    button.textContent = 'Hide Context';
+                    button.textContent = 'Hide Full Context';
                 }
             }
         }

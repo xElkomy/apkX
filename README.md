@@ -5,7 +5,7 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 ![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![GitHub Actions](https://img.shields.io/badge/github-actions-blue.svg)
-![Version](https://img.shields.io/badge/version-v2.1.0-orange.svg)
+![Version](https://img.shields.io/badge/version-v3.0.0-orange.svg)
 [![Build and Release](https://github.com/h0tak88r/apkX/actions/workflows/build.yml/badge.svg)](https://github.com/h0tak88r/apkX/actions/workflows/build.yml)
 
 ## Features ✨
@@ -48,9 +48,12 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 - 🖥️ **Modern Web UI**: Beautiful, responsive web interface
 - 🌙 **Dark/Light Mode**: Toggle between themes with persistent preferences
 - 📤 **Drag & Drop Upload**: Easy APK file upload with progress tracking
+- ⬇️ **APK Download**: Download APKs by package name from multiple sources
 - 🔔 **Discord Integration**: Per-upload webhook configuration
 - 📊 **Report Management**: View and download all analysis reports
 - 📱 **Mobile Friendly**: Responsive design works on all devices
+- 🔧 **MITM Patching**: Apply HTTPS inspection patches using apk-mitm
+- ⚡ **Async Processing**: Non-blocking analysis with real-time job status
 
 ## Requirements 🛠️
 - Go 1.21+
@@ -80,6 +83,9 @@ go build -o apkx-web cmd/server/main.go
 # With Discord webhook (optional)
 ./apkx-web -addr :9090 -webhook "https://discord.com/api/webhooks/XXX/YYY"
 
+# With MITM patching enabled
+./apkx-web -addr :9090 -mitm
+
 # Using environment variable
 export DISCORD_WEBHOOK="https://discord.com/api/webhooks/XXX/YYY"
 ./apkx-web -addr :9090
@@ -87,9 +93,12 @@ export DISCORD_WEBHOOK="https://discord.com/api/webhooks/XXX/YYY"
 
 Then open `http://localhost:9090` in your browser to:
 - Upload APK files via drag & drop
+- Download APKs by package name from APKPure, Google Play, F-Droid, Huawei AppGallery
+- Apply MITM patches for HTTPS inspection
 - Configure Discord webhooks per upload
 - View and download analysis reports
 - Toggle between dark/light themes
+- Real-time job status tracking
 
 ### **📱 Command Line Interface**
 ```bash
@@ -146,6 +155,7 @@ Then open `http://localhost:9090` in your browser to:
 ### **Web Server Flags**
 - `-addr`: HTTP listen address (default: ":9090")
 - `-webhook`: Default Discord webhook URL (optional)
+- `-mitm`: Enable MITM patching for HTTPS inspection using apk-mitm
 - `PORT`: Environment variable for port (e.g., `PORT=8080`)
 
 ## Security Vulnerability Detection 🛡️
@@ -243,6 +253,18 @@ Example JSON output:
 ```
 
 ## Changelog 📝
+
+### **v3.0.0** - Advanced Web Portal & MITM Integration
+- 🔧 **NEW**: MITM patching integration using apk-mitm for HTTPS inspection
+- ⬇️ **NEW**: APK download functionality from multiple sources (APKPure, Google Play, F-Droid, Huawei AppGallery)
+- ⚡ **NEW**: Asynchronous job processing with real-time status updates
+- 🎯 **NEW**: Smart download system - serves patched APK when MITM enabled, original otherwise
+- 📊 **NEW**: Package name and version extraction in HTML reports
+- 🔄 **NEW**: Job management system with active job tracking
+- 🗑️ **NEW**: Report deletion functionality
+- 🎨 **IMPROVED**: Enhanced UI with tabbed interface for upload/download
+- 🔧 **IMPROVED**: Better error handling and user feedback
+- 🛠️ **IMPROVED**: Analysis now uses original APK while keeping patched version for download
 
 ### **v2.1.0** - Web Portal Release
 - 🌐 **NEW**: Web portal interface with modern UI

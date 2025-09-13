@@ -630,9 +630,14 @@ func (s *APKScanner) saveResults(results map[string][]string) error {
 }
 
 func (s *APKScanner) generateHTMLReport(results map[string][]string, jsonPath string) error {
+	// Extract package information from AndroidManifest.xml
+	packageName, version := reporter.ExtractPackageInfo(s.tempDir)
+
 	// Prepare HTML report data
 	reportData := reporter.HTMLReportData{
 		APKName:       filepath.Base(s.config.APKPath),
+		PackageName:   packageName,
+		Version:       version,
 		ScanTime:      time.Now().Format("2006-01-02 15:04:05"),
 		TotalFindings: s.countTotalFindings(results),
 		Categories:    s.prepareCategoriesData(results),
