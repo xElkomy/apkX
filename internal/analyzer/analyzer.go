@@ -62,12 +62,7 @@ type PatternsConfig struct {
 }
 
 func NewAPKScanner(config *Config) *APKScanner {
-	analyzers := []AnalyzerInterface{
-		NewTaskHijackingAnalyzer(),
-		NewInsecureStorageAnalyzer(),
-		NewCertificatePinningAnalyzer(),
-		NewDebugModeAnalyzer(),
-	}
+	analyzers := []AnalyzerInterface{}
 
 	if config.JanusScan {
 		analyzers = append(analyzers, NewJanusVulnerabilityAnalyzer())
@@ -89,44 +84,6 @@ func (s *APKScanner) Run() error {
 	// Try to use cached decompiled APK or decompile new one
 	if err := s.decompileAPK(); err != nil {
 		return fmt.Errorf("failed to decompile APK: %v", err)
-	}
-
-	// If task hijacking only mode is enabled, skip pattern scanning
-	if s.config.TaskHijackOnly {
-		fmt.Printf("%s** Scanning for Task Hijacking vulnerabilities...%s\n",
-			utils.ColorBlue, utils.ColorEnd)
-
-		analyzer := NewTaskHijackingAnalyzer()
-		findings, err := analyzer.Analyze(s.tempDir)
-		if err != nil {
-			return fmt.Errorf("task hijacking analysis failed: %v", err)
-		}
-
-		// Print findings
-		fmt.Printf("\n%s=== Task Hijacking Analysis Results ===%s\n",
-			utils.ColorGreen, utils.ColorEnd)
-
-		if len(findings) == 0 || (len(findings) == 1 && findings[0] == "No activities vulnerable to task hijacking were found.") {
-			fmt.Printf("%sNo task hijacking vulnerabilities found.%s\n",
-				utils.ColorGreen, utils.ColorEnd)
-		} else {
-			fmt.Printf("%sFound potential task hijacking vulnerabilities:%s\n",
-				utils.ColorRed, utils.ColorEnd)
-			for _, finding := range findings {
-				fmt.Println(finding)
-				fmt.Println("---")
-			}
-		}
-
-		// Save results if output directory is specified
-		if s.config.OutputDir != "" {
-			results := map[string][]string{
-				"Task Hijacking Vulnerabilities": findings,
-			}
-			return s.saveResults(results)
-		}
-
-		return nil
 	}
 
 	// Load patterns
@@ -184,6 +141,26 @@ func (s *APKScanner) Run() error {
 
 	// Wait for all goroutines to complete
 	wg.Wait()
+
+	// Special handling for AndroidManifest.xml - detect exported components
+	manifestPath := filepath.Join(s.tempDir, "AndroidManifest.xml")
+	if _, err := os.Stat(manifestPath); err == nil {
+		s.detectExportedComponents(manifestPath, results, &resultsMu)
+	} else {
+		// Try alternative locations for AndroidManifest.xml
+		altPaths := []string{
+			filepath.Join(s.tempDir, "resources", "AndroidManifest.xml"),
+			filepath.Join(s.tempDir, "sources", "AndroidManifest.xml"),
+			filepath.Join(s.tempDir, "res", "AndroidManifest.xml"),
+		}
+
+		for _, altPath := range altPaths {
+			if _, err := os.Stat(altPath); err == nil {
+				s.detectExportedComponents(altPath, results, &resultsMu)
+				break
+			}
+		}
+	}
 
 	// Run additional security analyzers
 	for _, analyzer := range s.analyzers {
@@ -322,7 +299,22 @@ func (s *APKScanner) processFile(path string, patterns map[string][]string) map[
 				context = strings.ReplaceAll(context, "\n", " ")
 				context = strings.TrimSpace(context)
 
-				result := fmt.Sprintf("%s: %s (Context: ...%s...)", relPath, match, context)
+				// Special handling for security vulnerability patterns
+				var result string
+				if patternName == "InsecureStorage" || patternName == "CertificatePinning" || patternName == "DebugMode" {
+					// For security vulnerabilities, provide more detailed context
+					lines := strings.Split(contentStr, "\n")
+					lineNum := 1
+					for i, line := range lines {
+						if strings.Contains(line, match) {
+							lineNum = i + 1
+							break
+						}
+					}
+					result = fmt.Sprintf("%s:%d: %s (Context: %s)", relPath, lineNum, match, context)
+				} else {
+					result = fmt.Sprintf("%s: %s (Context: ...%s...)", relPath, match, context)
+				}
 				matches[patternName] = append(matches[patternName], result)
 				seen[match] = true
 			}
@@ -633,16 +625,23 @@ func (s *APKScanner) generateHTMLReport(results map[string][]string, jsonPath st
 	// Extract package information from AndroidManifest.xml
 	packageName, version := reporter.ExtractPackageInfo(s.tempDir)
 
+	// Extract minSdkVersion from apktool.yml
+	minSdkVersion := reporter.ExtractMinSdkVersion(s.tempDir)
+
 	// Prepare HTML report data
 	reportData := reporter.HTMLReportData{
 		APKName:       filepath.Base(s.config.APKPath),
 		PackageName:   packageName,
 		Version:       version,
+		MinSdkVersion: minSdkVersion,
 		ScanTime:      time.Now().Format("2006-01-02 15:04:05"),
 		TotalFindings: s.countTotalFindings(results),
 		Categories:    s.prepareCategoriesData(results),
 		Summary:       s.prepareSummaryData(results),
 	}
+
+	// Copy important decompiled files to report directory
+	s.copyDecompiledFiles()
 
 	// Generate HTML report
 	htmlContent, err := reporter.GenerateHTMLReport(reportData)
@@ -666,6 +665,37 @@ func (s *APKScanner) countTotalFindings(results map[string][]string) int {
 		total += len(findings)
 	}
 	return total
+}
+
+// copyDecompiledFiles copies important decompiled files to the report directory
+func (s *APKScanner) copyDecompiledFiles() {
+	// Files to copy from decompiled directory to report directory
+	filesToCopy := []string{
+		"AndroidManifest.xml",
+		"sources/AndroidManifest.xml",
+		"resources/AndroidManifest.xml",
+		"res/AndroidManifest.xml",
+		"resources/com.jbl.oneapp.apk/AndroidManifest.xml", // Specific case for some APKs
+		"apktool.yml",
+		"h5/apktool.yml", // Alternative location
+	}
+
+	for _, fileName := range filesToCopy {
+		srcPath := filepath.Join(s.tempDir, fileName)
+		dstPath := filepath.Join(s.config.OutputDir, filepath.Base(fileName))
+
+		// Check if source file exists
+		if _, err := os.Stat(srcPath); err == nil {
+			// Copy the file
+			if err := copyFile(srcPath, dstPath); err != nil {
+				fmt.Printf("%sWarning: Failed to copy %s: %v%s\n",
+					utils.ColorWarning, fileName, err, utils.ColorEnd)
+			} else {
+				fmt.Printf("%sCopied %s to report directory%s\n",
+					utils.ColorGreen, fileName, utils.ColorEnd)
+			}
+		}
+	}
 }
 
 func (s *APKScanner) prepareCategoriesData(results map[string][]string) map[string]reporter.CategoryData {
@@ -728,6 +758,375 @@ func (s *APKScanner) prepareCategoriesData(results map[string][]string) map[stri
 	return categories
 }
 
+func (s *APKScanner) detectExportedComponents(manifestPath string, results map[string][]string, resultsMu *sync.Mutex) {
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return
+	}
+
+	manifestContent := string(content)
+
+	// Detect exported activities
+	exportedActivities := s.detectExportedActivities(manifestContent)
+	if len(exportedActivities) > 0 {
+		resultsMu.Lock()
+		results["ExportedActivities"] = exportedActivities
+		resultsMu.Unlock()
+	}
+
+	// Detect exported services
+	exportedServices := s.detectExportedServices(manifestContent)
+	if len(exportedServices) > 0 {
+		resultsMu.Lock()
+		results["ExportedServices"] = exportedServices
+		resultsMu.Unlock()
+	}
+
+	// Detect exported broadcast receivers
+	exportedReceivers := s.detectExportedBroadcastReceivers(manifestContent)
+	if len(exportedReceivers) > 0 {
+		resultsMu.Lock()
+		results["ExportedBroadcastReceivers"] = exportedReceivers
+		resultsMu.Unlock()
+	}
+
+	// Detect exported content providers
+	exportedProviders := s.detectExportedContentProviders(manifestContent)
+	if len(exportedProviders) > 0 {
+		resultsMu.Lock()
+		results["ExportedContentProviders"] = exportedProviders
+		resultsMu.Unlock()
+	}
+
+	// Detect webviews
+	webviews := s.detectWebViews(manifestContent)
+	if len(webviews) > 0 {
+		resultsMu.Lock()
+		results["WebViews"] = webviews
+		resultsMu.Unlock()
+	}
+
+	// Detect deep links
+	deepLinks := s.detectDeepLinks(manifestContent)
+	if len(deepLinks) > 0 {
+		resultsMu.Lock()
+		results["DeepLinks"] = deepLinks
+		resultsMu.Unlock()
+	}
+
+	// Detect custom URL schemes
+	customSchemes := s.detectCustomURLSchemes(manifestContent)
+	if len(customSchemes) > 0 {
+		resultsMu.Lock()
+		results["CustomURLSchemes"] = customSchemes
+		resultsMu.Unlock()
+	}
+
+	// Detect file provider exports
+	fileProviders := s.detectFileProviderExports(manifestContent)
+	if len(fileProviders) > 0 {
+		resultsMu.Lock()
+		results["FileProviderExports"] = fileProviders
+		resultsMu.Unlock()
+	}
+
+	// Detect task hijacking vulnerabilities
+	taskHijacking := s.detectTaskHijacking(manifestContent)
+	if len(taskHijacking) > 0 {
+		resultsMu.Lock()
+		results["taskAffinity"] = taskHijacking
+		resultsMu.Unlock()
+	}
+
+	// Detect single task launch mode
+	singleTask := s.detectSingleTaskLaunchMode(manifestContent)
+	if len(singleTask) > 0 {
+		resultsMu.Lock()
+		results["SingleTaskLaunchMode"] = singleTask
+		resultsMu.Unlock()
+	}
+}
+
+func (s *APKScanner) detectExportedActivities(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<activity[^>]*?android:name="([^"]+)".*?android:exported="true"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			activityName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, activityName, "activity")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Context: %s)", activityName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectExportedServices(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<service[^>]*?android:name="([^"]+)".*?android:exported="true"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			serviceName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, serviceName, "service")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Context: %s)", serviceName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectExportedBroadcastReceivers(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<receiver[^>]*?android:name="([^"]+)".*?android:exported="true"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			receiverName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, receiverName, "receiver")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Context: %s)", receiverName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectExportedContentProviders(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<provider[^>]*?android:name="([^"]+)".*?android:exported="true"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			providerName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, providerName, "provider")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Context: %s)", providerName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectWebViews(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<activity[^>]*?android:name="([^"]+)".*?<intent-filter[^>]*?<action[^>]*?android:name="android\.intent\.action\.VIEW"[^>]*?<category[^>]*?android:name="android\.intent\.category\.BROWSABLE"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			activityName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, activityName, "activity")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Context: %s)", activityName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectDeepLinks(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<activity[^>]*?android:name="([^"]+)".*?<intent-filter[^>]*?<action[^>]*?android:name="android\.intent\.action\.VIEW"[^>]*?<category[^>]*?android:name="android\.intent\.category\.DEFAULT"[^>]*?<data[^>]*?android:scheme="([^"]+)"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 2 {
+			activityName := match[1]
+			scheme := match[2]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, activityName, "activity")
+			result := fmt.Sprintf("AndroidManifest.xml: %s -> %s:// (Context: %s)", activityName, scheme, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectCustomURLSchemes(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<data[^>]*?android:scheme="([^"]+)"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			scheme := match[1]
+			result := fmt.Sprintf("AndroidManifest.xml: Custom scheme '%s://'", scheme)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectFileProviderExports(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<provider[^>]*?android:name="([^"]+)".*?android:exported="true".*?android:authorities="([^"]+)"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 2 {
+			providerName := match[1]
+			authority := match[2]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, providerName, "provider")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (Authority: %s) (Context: %s)", providerName, authority, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectTaskHijacking(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<activity[^>]*?android:name="([^"]+)".*?android:taskAffinity="([^"]+)"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 2 {
+			activityName := match[1]
+			taskAffinity := match[2]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, activityName, "activity")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (TaskAffinity: %s) (Context: %s)", activityName, taskAffinity, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) detectSingleTaskLaunchMode(manifestContent string) []string {
+	// Use the regex pattern from regexes.yaml
+	pattern := `(?s)<activity[^>]*?android:name="([^"]+)".*?android:launchMode="singleTask"`
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil
+	}
+
+	matches := re.FindAllStringSubmatch(manifestContent, -1)
+	var results []string
+
+	for _, match := range matches {
+		if len(match) > 1 {
+			activityName := match[1]
+			// Get some context around the match
+			context := s.getComponentContext(manifestContent, activityName, "activity")
+			result := fmt.Sprintf("AndroidManifest.xml: %s (LaunchMode: singleTask) (Context: %s)", activityName, context)
+			results = append(results, result)
+		}
+	}
+
+	return results
+}
+
+func (s *APKScanner) getComponentContext(manifestContent, componentName, componentType string) string {
+	lines := strings.Split(manifestContent, "\n")
+
+	// Find the line containing the component name and android:name
+	for i, line := range lines {
+		if strings.Contains(line, componentName) && strings.Contains(line, "android:name=") {
+			// Look backwards to find the opening tag (it might be on a previous line)
+			openingTagLine := i
+			for j := i; j >= 0 && j >= i-5; j-- {
+				if strings.Contains(lines[j], "<"+componentType) {
+					openingTagLine = j
+					break
+				}
+			}
+
+			// Get context around the component (3 lines before opening tag and 3 lines after component name)
+			start := max(0, openingTagLine-3)
+			end := min(len(lines), i+4)
+			context := lines[start:end]
+
+			// Clean up the context
+			contextStr := strings.Join(context, " ")
+			contextStr = strings.ReplaceAll(contextStr, "\n", " ")
+			contextStr = strings.ReplaceAll(contextStr, "\t", " ")
+			contextStr = strings.ReplaceAll(contextStr, "  ", " ")
+			contextStr = strings.TrimSpace(contextStr)
+
+			// Limit context length
+			if len(contextStr) > 200 {
+				contextStr = contextStr[:200] + "..."
+			}
+
+			return contextStr
+		}
+	}
+
+	return "Context not found"
+}
+
 func (s *APKScanner) prepareSummaryData(results map[string][]string) reporter.SummaryData {
 	// Count files processed (this is an approximation)
 	totalFiles := 0
@@ -778,6 +1177,11 @@ func (s *APKScanner) prepareSummaryData(results map[string][]string) reporter.Su
 
 // Helper function to filter relevant files
 func isRelevantFile(filename string) bool {
+	// Always include AndroidManifest.xml regardless of location
+	if strings.HasSuffix(filename, "AndroidManifest.xml") {
+		return true
+	}
+
 	// Skip common resource and library files
 	skipPaths := []string{
 		"/res/anim/",

@@ -13,6 +13,7 @@ type HTMLReportData struct {
 	APKName         string
 	PackageName     string
 	Version         string
+	MinSdkVersion   string
 	ScanTime        string
 	TotalFindings   int
 	Categories      map[string]CategoryData
@@ -92,6 +93,52 @@ func getSeverityIcon(severity string) string {
 	default:
 		return "ℹ️"
 	}
+}
+
+// ExtractMinSdkVersion extracts minSdkVersion from AndroidManifest.xml
+func ExtractMinSdkVersion(decompileDir string) string {
+	// Look for AndroidManifest.xml in common decompilation output locations
+	manifestPaths := []string{
+		filepath.Join(decompileDir, "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "sources", "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "resources", "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "res", "AndroidManifest.xml"),
+		filepath.Join(decompileDir, "resources", "com.jbl.oneapp.apk", "AndroidManifest.xml"),
+	}
+
+	var manifestPath string
+	for _, path := range manifestPaths {
+		if _, err := os.Stat(path); err == nil {
+			manifestPath = path
+			break
+		}
+	}
+
+	if manifestPath == "" {
+		return ""
+	}
+
+	// Read the AndroidManifest.xml file
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return ""
+	}
+
+	manifestContent := string(content)
+
+	// Extract minSdkVersion using regex
+	minSdkRegex := regexp.MustCompile(`android:minSdkVersion\s*=\s*["'](\d+)["']`)
+	if matches := minSdkRegex.FindStringSubmatch(manifestContent); len(matches) > 1 {
+		return matches[1]
+	}
+
+	// Try alternative pattern without quotes
+	minSdkRegex2 := regexp.MustCompile(`android:minSdkVersion\s*=\s*(\d+)`)
+	if matches := minSdkRegex2.FindStringSubmatch(manifestContent); len(matches) > 1 {
+		return matches[1]
+	}
+
+	return ""
 }
 
 // ExtractPackageInfo extracts package name and version from AndroidManifest.xml
@@ -433,18 +480,20 @@ const htmlTemplate = `
         }
         
         .header {
-            background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
-            color: var(--bg-primary);
+            background: var(--bg-secondary);
+            color: var(--text-primary);
             padding: 40px;
             border-radius: 16px;
             margin-bottom: 32px;
             box-shadow: var(--shadow);
+            border: 1px solid var(--border-color);
         }
         
         .header h1 {
             font-size: 2.8em;
             margin-bottom: 16px;
             font-weight: 700;
+            color: var(--accent-primary);
         }
         
         .header .subtitle {
@@ -571,36 +620,51 @@ const htmlTemplate = `
         /* Summary cards */
         .summary-cards {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
             gap: 24px;
             margin-bottom: 32px;
         }
         
         .card {
             background: var(--bg-secondary);
-            padding: 24px;
-            border-radius: 12px;
+            padding: 28px;
+            border-radius: 16px;
             box-shadow: var(--shadow);
-            text-align: center;
             border: 1px solid var(--border-color);
-            transition: transform 0.3s ease;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 20px;
         }
         
         .card:hover {
             transform: translateY(-4px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+            border-color: var(--accent-primary);
+        }
+        
+        .card-icon {
+            font-size: 2.5em;
+            opacity: 0.8;
+            flex-shrink: 0;
+        }
+        
+        .card-content {
+            flex: 1;
         }
         
         .card h3 {
-            color: var(--accent-primary);
-            margin-bottom: 12px;
-            font-size: 1.1em;
-            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            font-size: 1em;
+            font-weight: 500;
         }
         
         .card .number {
-            font-size: 2.2em;
+            font-size: 2.4em;
             font-weight: 700;
             color: var(--text-primary);
+            line-height: 1;
         }
         
         /* Vulnerabilities */
@@ -845,14 +909,23 @@ const htmlTemplate = `
                 transform: translateX(-100%);
             }
             
-            .sidebar.open {
+            .sidebar:not(.collapsed) {
                 transform: translateX(0);
             }
             
             .main-content {
                 margin-left: 0;
             }
-            
+        }
+        
+        /* Ensure sidebar is visible by default on larger screens - more specific rule */
+        @media (min-width: 769px) {
+            .sidebar {
+                transform: translateX(0) !important;
+            }
+        }
+        
+        @media (max-width: 768px) {
             .top-bar {
                 padding: 16px 20px;
             }
@@ -900,9 +973,11 @@ const htmlTemplate = `
             <div class="nav-section">
                 <h3>🔍 Categories</h3>
                 {{range .Categories}}
+                {{if gt .Count 0}}
                 <a href="#" class="nav-item" data-section="{{.Name}}">
-                    {{.Name}} <span class="count {{if eq .Count 0}}zero{{end}}">{{.Count}}</span>
+                    {{.Name}} <span class="count">{{.Count}}</span>
                 </a>
+                {{end}}
                 {{end}}
             </div>
             
@@ -953,6 +1028,7 @@ const htmlTemplate = `
                     <strong>APK:</strong> {{.APKName}}<br>
                     {{if .PackageName}}<strong>Package:</strong> {{.PackageName}}<br>{{end}}
                     {{if .Version}}<strong>Version:</strong> {{.Version}}<br>{{end}}
+                    {{if .MinSdkVersion}}<strong>Min SDK:</strong> {{.MinSdkVersion}}<br>{{end}}
                     <strong>Scan Time:</strong> {{.ScanTime}}<br>
                     <strong>Total Findings:</strong> {{.TotalFindings}}
                 </div>
@@ -961,43 +1037,37 @@ const htmlTemplate = `
             <!-- Summary Section -->
             <div class="content-section active" id="summary-section">
                 <div class="section-header">
-                    <h2 class="section-title">📊 Summary</h2>
-                    <div class="section-stats">
-                        <div class="stat-item">
-                            <div class="stat-number">{{.Summary.TotalFiles}}</div>
-                            <div class="stat-label">Files</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">{{.Summary.TotalPatterns}}</div>
-                            <div class="stat-label">Patterns</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number">{{.Summary.Vulnerabilities}}</div>
-                            <div class="stat-label">Vulnerabilities</div>
-                        </div>
-                        <div class="stat-item">
-                            <div class="stat-number" style="color: var(--danger);">{{.Summary.HighRisk}}</div>
-                            <div class="stat-label">High Risk</div>
-                        </div>
-                    </div>
+                    <h2 class="section-title">📊 Analysis Summary</h2>
                 </div>
                 
                 <div class="summary-cards">
                     <div class="card">
-                        <h3>Total Files</h3>
-                        <div class="number">{{.Summary.TotalFiles}}</div>
+                        <div class="card-icon">📁</div>
+                        <div class="card-content">
+                            <h3>Files Analyzed</h3>
+                            <div class="number">{{.Summary.TotalFiles}}</div>
+                        </div>
                     </div>
                     <div class="card">
-                        <h3>Patterns Scanned</h3>
-                        <div class="number">{{.Summary.TotalPatterns}}</div>
+                        <div class="card-icon">🔍</div>
+                        <div class="card-content">
+                            <h3>Patterns Scanned</h3>
+                            <div class="number">{{.Summary.TotalPatterns}}</div>
+                        </div>
                     </div>
                     <div class="card">
-                        <h3>Vulnerabilities</h3>
-                        <div class="number">{{.Summary.Vulnerabilities}}</div>
+                        <div class="card-icon">⚠️</div>
+                        <div class="card-content">
+                            <h3>Vulnerabilities</h3>
+                            <div class="number">{{.Summary.Vulnerabilities}}</div>
+                        </div>
                     </div>
                     <div class="card">
-                        <h3>High Risk</h3>
-                        <div class="number" style="color: var(--danger);">{{.Summary.HighRisk}}</div>
+                        <div class="card-icon">🔴</div>
+                        <div class="card-content">
+                            <h3>High Risk</h3>
+                            <div class="number" style="color: var(--danger);">{{.Summary.HighRisk}}</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1055,7 +1125,10 @@ const htmlTemplate = `
             
             <!-- Categories Sections -->
             {{if .Categories}}
+            {{$hasFindings := false}}
             {{range $category, $data := .Categories}}
+            {{if gt $data.Count 0}}
+            {{$hasFindings = true}}
             <div class="content-section" id="{{$category}}-section">
                 <div class="section-header">
                     <h2 class="section-title">🔍 {{$data.Name}}</h2>
@@ -1107,6 +1180,13 @@ const htmlTemplate = `
                         <button onclick="nextPage('{{$category}}')" id="next-{{$category}}">Next</button>
                     </div>
                 </div>
+            </div>
+            {{end}}
+            {{end}}
+            {{if not $hasFindings}}
+            <div class="no-findings">
+                <h2>✅ No Security Issues Found</h2>
+                <p>Great! No sensitive information or vulnerabilities were detected in this APK.</p>
             </div>
             {{end}}
             {{else}}

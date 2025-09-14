@@ -186,6 +186,7 @@ func main() {
 	http.HandleFunc("/api/job/delete/", handleDeleteJob)
 	http.HandleFunc("/api/report/delete/", handleDeleteReport)
 	http.HandleFunc("/api/install/", handleInstallAPK)
+	http.HandleFunc("/api/manifest/", handleDownloadManifest)
 
 	// Serve reports statically
 	fs := http.FileServer(http.Dir(reportsRoot))
@@ -795,6 +796,7 @@ var indexTmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
               {{if or (eq .Type "APK") (eq .Type "XAPK")}}
               <a href="/api/install/{{.ID}}" class="btn-small" style="background: #28a745; color: white; text-decoration: none;">📱 Download</a>
               {{end}}
+              <a href="/api/manifest/{{.ID}}" class="btn-small" style="background: #17a2b8; color: white; text-decoration: none;">📄 Manifest</a>
               <button onclick="deleteReport('{{.ID}}')" class="btn-small btn-danger">🗑️ Delete</button>
             </td>
           </tr>
@@ -900,10 +902,15 @@ var indexTmpl = template.Must(template.New("index").Parse(`<!DOCTYPE html>
     // Job management
     function loadJobs() {
       fetch('/api/jobs')
-        .then(response => response.json())
+        .then(response => {
+          if (!response.ok) {
+            throw new Error('Network response was not ok');
+          }
+          return response.json();
+        })
         .then(jobs => {
           const container = document.getElementById('jobs-container');
-          if (jobs.length === 0) {
+          if (!jobs || jobs.length === 0) {
             container.innerHTML = '<div class="no-reports"><p>No active jobs</p></div>';
             return;
           }
@@ -1227,6 +1234,10 @@ func handleJobsAPI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobs := jobManager.GetActiveJobs()
+	if jobs == nil {
+		jobs = []*Job{}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(jobs)
 }
@@ -1866,6 +1877,64 @@ func applyMITMPatch(apkPath string) (string, error) {
 
 	log.Printf("MITM patch applied successfully: %s", patchedPath)
 	return patchedPath, nil
+}
+
+func handleDownloadManifest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	reportID := strings.TrimPrefix(r.URL.Path, "/api/manifest/")
+	if reportID == "" {
+		http.Error(w, "report ID is required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the AndroidManifest.xml file for this report
+	reportDir := filepath.Join(reportsRoot, reportID)
+
+	// Look for AndroidManifest.xml in common decompilation output locations
+	manifestPaths := []string{
+		filepath.Join(reportDir, "AndroidManifest.xml"),
+		filepath.Join(reportDir, "sources", "AndroidManifest.xml"),
+		filepath.Join(reportDir, "resources", "AndroidManifest.xml"),
+		filepath.Join(reportDir, "res", "AndroidManifest.xml"),
+	}
+
+	var manifestPath string
+	for _, path := range manifestPaths {
+		if _, err := os.Stat(path); err == nil {
+			manifestPath = path
+			break
+		}
+	}
+
+	if manifestPath == "" {
+		http.Error(w, "AndroidManifest.xml not found", http.StatusNotFound)
+		return
+	}
+
+	// Set headers for file download
+	w.Header().Set("Content-Disposition", "attachment; filename=AndroidManifest.xml")
+	w.Header().Set("Content-Type", "application/xml")
+
+	// Open and serve the file
+	file, err := os.Open(manifestPath)
+	if err != nil {
+		http.Error(w, "failed to open file", http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	// Copy file to response
+	_, err = io.Copy(w, file)
+	if err != nil {
+		log.Printf("Failed to serve AndroidManifest.xml %s: %v", manifestPath, err)
+		return
+	}
+
+	log.Printf("AndroidManifest.xml %s downloaded successfully", reportID)
 }
 
 func getEnv(key, def string) string {

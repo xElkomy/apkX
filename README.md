@@ -5,7 +5,7 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 ![Go Version](https://img.shields.io/badge/go-1.21+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![GitHub Actions](https://img.shields.io/badge/github-actions-blue.svg)
-![Version](https://img.shields.io/badge/version-v3.0.0-orange.svg)
+![Version](https://img.shields.io/badge/version-v3.1.0-orange.svg)
 [![Build and Release](https://github.com/h0tak88r/apkX/actions/workflows/build.yml/badge.svg)](https://github.com/h0tak88r/apkX/actions/workflows/build.yml)
 
 ## Features ✨
@@ -20,15 +20,23 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
   - Email addresses
   - Database connections
   - Hardcoded credentials
-  - And 1600+ more patterns...
+  - And **1652+ patterns** (including new security vulnerability patterns)...
 
-### 🛡️ **Security Vulnerability Detection**
-- 🔄 **Task Hijacking**: Activity launch mode vulnerability analysis
+### 🛡️ **Comprehensive Security Vulnerability Detection**
+- 🔄 **Task Hijacking**: Activity launch mode vulnerability analysis (singleTask, taskAffinity)
 - 🚨 **Janus Vulnerability**: APK signature scheme analysis (V1/V2/V3)
 - 🔒 **Insecure Storage**: SharedPreferences and SQLite security analysis
 - 🔐 **Certificate Pinning**: SSL/TLS security implementation checks
 - 🐛 **Debug Mode**: Production build security validation
-- 📱 **Android Manifest**: Security configuration analysis
+- 📱 **Android Manifest Analysis**:
+  - **Exported Activities**: Activities accessible by other apps
+  - **Exported Services**: Services vulnerable to hijacking
+  - **Exported Broadcast Receivers**: Intent-based vulnerabilities
+  - **Exported Content Providers**: Data exposure risks
+  - **WebViews**: XSS and injection possibilities
+  - **Deep Links**: Custom URL scheme vulnerabilities
+  - **File Provider Exports**: File access vulnerabilities
+  - **Custom URL Schemes**: All custom schemes detection
 
 ### 📊 **Reporting & Output**
 - 🌐 **Beautiful HTML Reports** with interactive visualization
@@ -120,26 +128,23 @@ Then open `http://localhost:9090` in your browser to:
 
 ### **Security Analysis Commands**
 ```bash
-# Task hijacking vulnerability scan
-./apkx -task-hijacking -apk target.apk
-
-# Janus vulnerability detection
-./apkx -janus -apk target.apk
-
-# Generate HTML report
+# Full comprehensive scan with all security checks (RECOMMENDED)
 ./apkx -html -apk target.apk
 
-# Full comprehensive scan (RECOMMENDED)
-./apkx -html -janus -apk target.apk
+# Generate HTML report with all vulnerability categories
+./apkx -html -apk target.apk
+
+# Analyze specific APK with custom output
+./apkx -html -o results -apk target.apk
 ```
 
 ### **Advanced Commands**
 ```bash
 # Send both JSON and HTML reports to Discord
-./apkx -html -janus -wh "https://discord.com/api/webhooks/your-webhook-url" app.apk
+./apkx -html -wh "https://discord.com/api/webhooks/your-webhook-url" app.apk
 
 # Full scan with custom output and workers
-./apkx -html -janus -o results -w 8 -apk target.apk
+./apkx -html -o results -w 8 -apk target.apk
 ```
 
 ### **Command Line Flags**
@@ -148,9 +153,7 @@ Then open `http://localhost:9090` in your browser to:
 - `-p`: Path to patterns file (default: "config/regexes.yaml")
 - `-w`: Number of concurrent workers (default: 3)
 - `-wh`: Discord webhook URL for sending results (optional)
-- `-task-hijacking`: Enable task hijacking vulnerability scanning
 - `-html`: Generate HTML report (default: false)
-- `-janus`: Enable Janus vulnerability scanning (default: false)
 
 ### **Web Server Flags**
 - `-addr`: HTTP listen address (default: ":9090")
@@ -253,6 +256,34 @@ Example JSON output:
 ```
 
 ## Changelog 📝
+
+### **v3.1.0** - Comprehensive Android Security Analysis
+- 🛡️ **NEW**: Complete Android Manifest security analysis
+  - **Exported Activities**: Detect activities accessible by other apps
+  - **Exported Services**: Identify services vulnerable to hijacking
+  - **Exported Broadcast Receivers**: Find intent-based vulnerabilities
+  - **Exported Content Providers**: Detect data exposure risks
+  - **WebViews**: Identify XSS and injection possibilities
+  - **Deep Links**: Find custom URL scheme vulnerabilities
+  - **File Provider Exports**: Detect file access vulnerabilities
+  - **Custom URL Schemes**: Comprehensive scheme detection
+- 🔄 **NEW**: Enhanced Task Hijacking detection with regex-based patterns
+  - **taskAffinity**: Detect activities with custom task affinity
+  - **SingleTask Launch Mode**: Identify singleTask launch mode vulnerabilities
+- 🔒 **NEW**: Security vulnerability patterns integrated into main analyzer
+  - **InsecureStorage**: SharedPreferences and SQLite security analysis
+  - **CertificatePinning**: SSL/TLS security implementation checks
+  - **DebugMode**: Production build security validation
+- 📊 **IMPROVED**: Enhanced HTML reports with modern design
+  - **Consolidated summary section** - No more redundant information
+  - **Icon-based cards** with better visual hierarchy
+  - **Improved color scheme** and typography
+  - **Better responsive design** for all devices
+- ⚡ **IMPROVED**: Performance optimizations
+  - **1652+ patterns** loaded for comprehensive scanning
+  - **Regex-based detection** for all security vulnerabilities
+  - **Simplified output format** for better readability
+- 🧹 **CLEANUP**: Removed deprecated analyzers and consolidated codebase
 
 ### **v3.0.0** - Advanced Web Portal & MITM Integration
 - 🔧 **NEW**: MITM patching integration using apk-mitm for HTTPS inspection
