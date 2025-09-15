@@ -120,6 +120,20 @@ export DISCORD_WEBHOOK="https://discord.com/api/webhooks/XXX/YYY"
 ./apkx-web -addr :9090
 ```
 
+### Run with Docker
+```bash
+# Build image
+docker build -t apkx-web .
+
+# Run (with MITM enabled by default)
+docker run --rm -p 9090:9090 apkx-web
+```
+
+### One-shot installer (Debian/Ubuntu)
+```bash
+bash scripts/setup.sh
+```
+
 Then open `http://localhost:9090` in your browser to:
 - Upload APK files via drag & drop
 - Download APKs by package name from APKPure, Google Play, F-Droid, Huawei AppGallery
