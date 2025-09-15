@@ -68,6 +68,27 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 - Java 8+ (for JADX)
 - JADX (automatically downloaded if not found)
 
+### System prerequisites
+- unzip, zip, tar, curl, git
+- Linux or macOS recommended (Windows supported via WSL)
+
+### Optional but recommended tools
+- Node.js 16+ and npm (for `apk-mitm` if you enable MITM patching)
+- Python 3.8+ and pip (for `apkeep` APK downloader)
+
+### Install external tools
+```bash
+# apk-mitm (MITM HTTPS patching)
+npm install -g apk-mitm
+
+# apkeep (APK download by package name)
+pip install --upgrade apkeep
+```
+
+Notes:
+- MITM patching is optional. If `apk-mitm` is not installed or fails, analysis continues on the original APK.
+- XAPK files are supported; apkX automatically extracts the embedded APK before analysis.
+
 ## Installation 📦
 ```bash
 # Clone the repository
