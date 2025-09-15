@@ -19,14 +19,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 RUN set -eux; \
     ARCH=$(dpkg --print-architecture); \
     case "$ARCH" in \
-      amd64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/v0.17.0/apkeep-v0.17.0-x86_64-unknown-linux-gnu.tar.gz" ;; \
-      arm64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/v0.17.0/apkeep-v0.17.0-aarch64-unknown-linux-gnu.tar.gz" ;; \
+      amd64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/0.17.0/apkeep-x86_64-unknown-linux-gnu" ;; \
+      arm64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/0.17.0/apkeep-aarch64-unknown-linux-gnu" ;; \
       *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
     esac; \
-    curl -fsSL "$APKEEP_URL" -o /tmp/apkeep.tgz; \
-    tar -xzf /tmp/apkeep.tgz -C /usr/local/bin apkeep; \
-    chmod +x /usr/local/bin/apkeep; \
-    rm -f /tmp/apkeep.tgz
+    curl -fsSL "$APKEEP_URL" -o /usr/local/bin/apkeep; \
+    chmod +x /usr/local/bin/apkeep
 
 WORKDIR /app
 
@@ -61,14 +59,12 @@ RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
 RUN set -eux; \
     ARCH=$(dpkg --print-architecture); \
     case "$ARCH" in \
-      amd64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/v0.17.0/apkeep-v0.17.0-x86_64-unknown-linux-gnu.tar.gz" ;; \
-      arm64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/v0.17.0/apkeep-v0.17.0-aarch64-unknown-linux-gnu.tar.gz" ;; \
+      amd64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/0.17.0/apkeep-x86_64-unknown-linux-gnu" ;; \
+      arm64)  APKEEP_URL="https://github.com/EFForg/apkeep/releases/download/0.17.0/apkeep-aarch64-unknown-linux-gnu" ;; \
       *) echo "Unsupported arch: $ARCH" && exit 1 ;; \
     esac; \
-    curl -fsSL "$APKEEP_URL" -o /tmp/apkeep.tgz; \
-    tar -xzf /tmp/apkeep.tgz -C /usr/local/bin apkeep; \
-    chmod +x /usr/local/bin/apkeep; \
-    rm -f /tmp/apkeep.tgz
+    curl -fsSL "$APKEEP_URL" -o /usr/local/bin/apkeep; \
+    chmod +x /usr/local/bin/apkeep
 
 WORKDIR /app
 
