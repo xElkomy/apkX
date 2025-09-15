@@ -70,7 +70,8 @@ WORKDIR /app
 
 # App files
 COPY --from=builder /app/apkx-web /usr/local/bin/apkx-web
-COPY web-data /app/web-data
+# Ensure runtime data directories exist inside the image
+RUN mkdir -p /app/web-data/uploads /app/web-data/downloads /app/web-data/reports
 
 EXPOSE 9090
 
