@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 apkX v2.0.0 Installation Script${NC}"
+echo -e "${BLUE}🚀 apkX v3.2.0 Installation Script${NC}"
 echo "======================================"
 
 # Detect platform and architecture
@@ -58,9 +58,23 @@ echo -e "${YELLOW}Binary name: $BINARY_NAME${NC}"
 # Check if binary exists in current directory
 if [ ! -f "$BINARY_NAME" ]; then
     echo -e "${RED}❌ Binary $BINARY_NAME not found in current directory${NC}"
-    echo -e "${YELLOW}Please download the appropriate binary from the GitHub release${NC}"
-    echo -e "${BLUE}Download URL: https://github.com/h0tak88r/apkX/releases/tag/v2.0.0${NC}"
-    exit 1
+    echo -e "${YELLOW}Attempting to download from GitHub release v3.2.0...${NC}"
+    RELEASE_URL="https://github.com/h0tak88r/apkX/releases/download/v3.2.0/$BINARY_NAME"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fL "$RELEASE_URL" -o "$BINARY_NAME" || true
+    elif command -v wget >/dev/null 2>&1; then
+        wget -O "$BINARY_NAME" "$RELEASE_URL" || true
+    else
+        echo -e "${RED}❌ Neither curl nor wget is installed. Please install one and re-run.${NC}"
+        exit 1
+    fi
+
+    if [ ! -s "$BINARY_NAME" ]; then
+        echo -e "${RED}❌ Download failed or file is empty.${NC}"
+        echo -e "${YELLOW}You can manually download from:${NC}"
+        echo -e "${BLUE}https://github.com/h0tak88r/apkX/releases/tag/v3.2.0${NC}"
+        exit 1
+    fi
 fi
 
 # Ask for installation directory
@@ -125,5 +139,5 @@ if [ "$INSTALL_PATH" != "." ]; then
 fi
 
 echo ""
-echo -e "${GREEN}🎉 apkX v2.0.0 is ready to use!${NC}"
+echo -e "${GREEN}🎉 apkX v3.2.0 is ready to use!${NC}"
 echo -e "${BLUE}For more information, visit: https://github.com/h0tak88r/apkX${NC}"
