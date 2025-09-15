@@ -1,0 +1,24 @@
+# Speed up builds and avoid permission issues
+.git
+.gitignore
+
+# Local data and reports
+web-data/uploads
+web-data/downloads
+web-data/reports
+
+# Binaries / build artifacts
+apkx
+apkx-web
+bin/
+*.tar.gz
+*.zip
+
+# Node / Python caches
+node_modules
+__pycache__
+*.pyc
+
+# Editor/OS files
+.DS_Store
+*.swp
