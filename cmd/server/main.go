@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -1150,6 +1151,18 @@ func processDownloadJob(job *Job, r *http.Request) {
 		return
 	}
 
+	// If XAPK, convert to APK
+	if strings.HasSuffix(strings.ToLower(apkPath), ".xapk") {
+		jobManager.UpdateJobStatus(job.ID, JobDownloading, "Converting XAPK to APK...")
+		apkConverted, err := convertXAPKToAPK(apkPath)
+		if err != nil {
+			log.Printf("Job %s: XAPK conversion failed: %v", job.ID, err)
+			jobManager.SetJobError(job.ID, fmt.Errorf("XAPK conversion failed: %v", err))
+			return
+		}
+		apkPath = apkConverted
+	}
+
 	log.Printf("Job %s: APK downloaded successfully: %s", job.ID, apkPath)
 
 	// Update status to analyzing
@@ -1158,17 +1171,20 @@ func processDownloadJob(job *Job, r *http.Request) {
 	// Check if MITM patching is requested
 	applyMITM := r.FormValue("mitm_patch") != ""
 	var patchedAPKPath string
+	var mitmFailed bool
 
 	if applyMITM {
 		jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "Applying MITM patch...")
 		patchedPath, err := applyMITMPatch(apkPath)
 		if err != nil {
 			log.Printf("Job %s: MITM patching failed: %v", job.ID, err)
-			jobManager.SetJobError(job.ID, fmt.Errorf("MITM patching failed: %v", err))
-			return
+			// Do not fail the job; continue with analysis of the original APK
+			mitmFailed = true
+			jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch failed, continuing without patch...")
+		} else {
+			patchedAPKPath = patchedPath
+			jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch applied, starting analysis...")
 		}
-		patchedAPKPath = patchedPath
-		jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch applied, starting analysis...")
 	}
 
 	// Now analyze the ORIGINAL APK (not the patched one)
@@ -1200,6 +1216,9 @@ func processDownloadJob(job *Job, r *http.Request) {
 	}
 	if applyMITM {
 		metaData["patched_apk"] = filepath.Base(patchedAPKPath)
+		if mitmFailed {
+			metaData["mitm_failed"] = "true"
+		}
 	}
 
 	metaJSON, _ := json.Marshal(metaData)
@@ -1569,6 +1588,17 @@ func processUploadJob(job *Job, apkPath string, r *http.Request) {
 		}
 	}()
 
+	// If XAPK uploaded, convert to APK first
+	if strings.HasSuffix(strings.ToLower(apkPath), ".xapk") {
+		jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "Converting XAPK to APK...")
+		apkConverted, err := convertXAPKToAPK(apkPath)
+		if err != nil {
+			jobManager.SetJobError(job.ID, fmt.Errorf("XAPK conversion failed: %v", err))
+			return
+		}
+		apkPath = apkConverted
+	}
+
 	// Update status to analyzing
 	jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "Starting analysis...")
 
@@ -1583,17 +1613,20 @@ func processUploadJob(job *Job, apkPath string, r *http.Request) {
 	// Check if MITM patching is requested
 	applyMITM := r.FormValue("mitm_patch") != ""
 	var patchedAPKPath string
+	var mitmFailed bool
 
 	if applyMITM {
 		jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "Applying MITM patch...")
 		patchedPath, err := applyMITMPatch(apkPath)
 		if err != nil {
 			log.Printf("Job %s: MITM patching failed: %v", job.ID, err)
-			jobManager.SetJobError(job.ID, fmt.Errorf("MITM patching failed: %v", err))
-			return
+			// Do not fail the job; continue with analysis of the original APK
+			mitmFailed = true
+			jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch failed, continuing without patch...")
+		} else {
+			patchedAPKPath = patchedPath
+			jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch applied, starting analysis...")
 		}
-		patchedAPKPath = patchedPath
-		jobManager.UpdateJobStatus(job.ID, JobAnalyzing, "MITM patch applied, starting analysis...")
 	}
 
 	// Write meta - store both original and patched paths
@@ -1603,6 +1636,9 @@ func processUploadJob(job *Job, apkPath string, r *http.Request) {
 	}
 	if applyMITM {
 		metaData["patched_apk"] = filepath.Base(patchedAPKPath)
+		if mitmFailed {
+			metaData["mitm_failed"] = "true"
+		}
 	}
 
 	metaJSON, _ := json.Marshal(metaData)
@@ -1669,6 +1705,107 @@ func readString(path string) string {
 		return ""
 	}
 	return string(b)
+}
+
+// convertXAPKToAPK extracts the base APK from a .xapk file and returns the new APK path.
+func convertXAPKToAPK(xapkPath string) (string, error) {
+	// Open the XAPK as a zip archive
+	zr, err := zip.OpenReader(xapkPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to open XAPK: %v", err)
+	}
+	defer zr.Close()
+
+	// Create a temp folder to extract
+	baseName := strings.TrimSuffix(filepath.Base(xapkPath), filepath.Ext(xapkPath))
+	extractDir := filepath.Join(os.TempDir(), "apkx-xapk-"+baseName)
+	if err := os.MkdirAll(extractDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create extract dir: %v", err)
+	}
+
+	// Extract all files
+	for _, f := range zr.File {
+		destPath := filepath.Join(extractDir, f.Name)
+		if f.FileInfo().IsDir() {
+			if err := os.MkdirAll(destPath, 0755); err != nil {
+				return "", fmt.Errorf("failed to create dir: %v", err)
+			}
+			continue
+		}
+		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+			return "", fmt.Errorf("failed to create parent dir: %v", err)
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return "", fmt.Errorf("failed to open file in zip: %v", err)
+		}
+		out, err := os.Create(destPath)
+		if err != nil {
+			rc.Close()
+			return "", fmt.Errorf("failed to create dest file: %v", err)
+		}
+		if _, err := io.Copy(out, rc); err != nil {
+			out.Close()
+			rc.Close()
+			return "", fmt.Errorf("failed to copy file: %v", err)
+		}
+		out.Close()
+		rc.Close()
+	}
+
+	// Common locations for base APK inside XAPK
+	candidatePaths := []string{
+		filepath.Join(extractDir, "base.apk"),
+		filepath.Join(extractDir, "app.apk"),
+		filepath.Join(extractDir, "Android", "obb", "base.apk"),
+	}
+	// Also scan for any .apk if the above not found
+	var found string
+	for _, p := range candidatePaths {
+		if _, err := os.Stat(p); err == nil {
+			found = p
+			break
+		}
+	}
+	if found == "" {
+		// Walk to find the first .apk
+		_ = filepath.WalkDir(extractDir, func(path string, d os.DirEntry, err error) error {
+			if found != "" || err != nil {
+				return nil
+			}
+			if !d.IsDir() && strings.HasSuffix(strings.ToLower(d.Name()), ".apk") && !strings.HasSuffix(strings.ToLower(d.Name()), ".idsig") {
+				found = path
+			}
+			return nil
+		})
+	}
+	if found == "" {
+		return "", fmt.Errorf("no APK found inside XAPK")
+	}
+
+	// Move the APK to downloads with a sane name
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to ensure downloads dir: %v", err)
+	}
+	outName := baseName + ".apk"
+	dest := filepath.Join(downloadDir, outName)
+
+	in, err := os.Open(found)
+	if err != nil {
+		return "", fmt.Errorf("failed to open extracted APK: %v", err)
+	}
+	defer in.Close()
+	out, err := os.Create(dest)
+	if err != nil {
+		return "", fmt.Errorf("failed to create dest APK: %v", err)
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return "", fmt.Errorf("failed to copy APK: %v", err)
+	}
+	out.Close()
+
+	return dest, nil
 }
 
 func fileExists(path string) bool {

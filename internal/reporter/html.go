@@ -845,10 +845,6 @@ const htmlTemplate = `
         }
         
         .context-full {
-            display: none;
-        }
-        
-        .context-full.show {
             display: block;
         }
         
@@ -918,9 +914,9 @@ const htmlTemplate = `
             }
         }
         
-        /* Ensure sidebar is visible by default on larger screens - more specific rule */
+        /* Ensure sidebar is visible by default on larger screens, but still collapsible */
         @media (min-width: 769px) {
-            .sidebar {
+            .sidebar:not(.collapsed) {
                 transform: translateX(0) !important;
             }
         }
@@ -991,7 +987,7 @@ const htmlTemplate = `
                 
                 <div class="control-group">
                     <label>Show Context</label>
-                    <button class="toggle-btn active" id="toggle-context">Show Context</button>
+                    <button class="toggle-btn active" id="toggle-context" disabled>Context Always Shown</button>
                 </div>
                 
                 <div class="control-group">
@@ -1163,11 +1159,7 @@ const htmlTemplate = `
                             {{if .Context}}
                             <div class="finding-context">
                                 <strong>Context:</strong>
-                                <div class="context-preview">{{.Context | stripAnsi | formatText}}</div>
-                                <button class="context-toggle" onclick="toggleContext('{{$category}}', {{$index}})">Show Full Context</button>
-                                <div class="context-full" id="context-{{$category}}-{{$index}}">
-                                    <pre>{{.Context | stripAnsi | formatText}}</pre>
-                                </div>
+                                <div class="context-full" id="context-{{$category}}-{{$index}}">{{.Context | stripAnsi | formatText}}</div>
                             </div>
                             {{end}}
                         </div>
@@ -1270,13 +1262,12 @@ const htmlTemplate = `
                 setViewMode('detailed');
             });
             
-            // Context toggle
-            document.getElementById('toggle-context').addEventListener('click', function() {
-                showContext = !showContext;
-                this.classList.toggle('active');
-                this.textContent = showContext ? 'Show Context' : 'Hide Context';
-                updateContextVisibility();
-            });
+            // Context is always shown; disable the toggle button
+            const contextBtn = document.getElementById('toggle-context');
+            if (contextBtn) {
+                contextBtn.disabled = true;
+                contextBtn.textContent = 'Context Always Shown';
+            }
             
             // Risk filter buttons
             document.getElementById('viewAll').addEventListener('click', function() {
@@ -1415,11 +1406,7 @@ const htmlTemplate = `
         // Update context visibility
         function updateContextVisibility() {
             document.querySelectorAll('.context-full').forEach(context => {
-                context.style.display = showContext ? 'block' : 'none';
-            });
-            
-            document.querySelectorAll('.context-preview').forEach(preview => {
-                preview.style.display = showContext ? 'none' : 'block';
+                context.style.display = 'block';
             });
         }
         
@@ -1454,22 +1441,8 @@ const htmlTemplate = `
         
         // Toggle context for individual findings
         function toggleContext(categoryName, index) {
-            const finding = document.querySelector('[data-category="' + categoryName + '"] .finding[data-index="' + index + '"]');
-            const contextPreview = finding.querySelector('.context-preview');
-            const contextFull = finding.querySelector('.context-full');
-            const button = finding.querySelector('.context-toggle');
-            
-            if (contextPreview && contextFull && button) {
-                if (contextPreview.style.display === 'none') {
-                    contextPreview.style.display = 'block';
-                    contextFull.style.display = 'none';
-                    button.textContent = 'Show Full Context';
-                } else {
-                    contextPreview.style.display = 'none';
-                    contextFull.style.display = 'block';
-                    button.textContent = 'Hide Full Context';
-                }
-            }
+            // No-op: full context is always visible now
+            return;
         }
     </script>
 </body>

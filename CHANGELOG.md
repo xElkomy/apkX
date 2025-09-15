@@ -1,6 +1,19 @@
 # Changelog
 
 ## [v2.0.0] - 2025-09-07
+## [v3.2.0] - 2025-09-15
+### Added
+- XAPK auto-conversion for uploads and downloads
+- Metadata flag `mitm_failed` when patching fails
+
+### Changed
+- MITM patching no longer aborts jobs on failure; analysis proceeds
+- HTML report: always show full context; removed redundant toggle
+- Sidebar menu toggle behavior fixed on large screens
+
+### Notes
+- See RELEASE_NOTES_v3.2.0.md for details
+
 ### Added
 - 🌐 **HTML Report Generation**: Beautiful interactive web-based reports
 - 🚨 **Janus Vulnerability Detection**: APK signature scheme analysis (V1/V2/V3)
