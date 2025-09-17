@@ -81,11 +81,17 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 
 ### Install external tools
 ```bash
+# To Download npm/node
+https://nodejs.org/en/download
+
 # apk-mitm (MITM HTTPS patching)
 npm install -g apk-mitm
 
+# To download cargo/rust
+https://doc.rust-lang.org/cargo/getting-started/installation.html
+
 # apkeep (APK download by package name)
-pip install --upgrade apkeep
+cargo install apkeep
 ```
 
 Notes:
