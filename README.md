@@ -146,6 +146,26 @@ Notes:
 - If you previously built the image, use `--no-cache` to avoid stale binaries with older hardcoded paths.
 - The server auto-detects the project root. You can pin it with `APKX_ROOT` or override directories with `APKX_*` envs shown above.
 
+### Run with Docker Compose
+```bash
+# Start service
+docker compose up --build
+
+# Run in background
+docker compose up -d --build
+
+# View logs
+docker compose logs -f
+
+# Stop and remove
+docker compose down
+```
+
+Compose defaults:
+- Exposes `9090` and runs apkx-web with smart root detection.
+- Mounts the repository root into `/app` and sets `APKX_ROOT=/app`.
+- To mount only required paths, adjust `volumes` in `docker-compose.yml` and set `APKX_*` envs accordingly.
+
 ### Smart project root & paths
 - The web server automatically detects the project root:
   1. Uses `APKX_ROOT` if set
