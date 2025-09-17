@@ -77,7 +77,7 @@ Advanced APK analysis tool with intelligent caching, pattern matching, comprehen
 
 ### Optional but recommended tools
 - Node.js 16+ and npm (for `apk-mitm` if you enable MITM patching)
-- Python 3.8+ and pip (for `apkeep` APK downloader)
+- ruby and cargo latest versio (for `apkeep` APK downloader)
 
 ### Install external tools
 ```bash
