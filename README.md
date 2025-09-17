@@ -166,6 +166,63 @@ Compose defaults:
 - Mounts the repository root into `/app` and sets `APKX_ROOT=/app`.
 - To mount only required paths, adjust `volumes` in `docker-compose.yml` and set `APKX_*` envs accordingly.
 
+### Quickstart Cheatsheet
+
+#### Docker Compose (recommended)
+```bash
+# From repository root
+docker compose up -d --build
+docker compose logs -f
+# Stop
+docker compose down
+```
+
+#### Docker CLI
+```bash
+# Build
+docker build --no-cache -t apkx-web .
+
+# Run by mounting full repo (smart root detection)
+docker run --rm -p 9090:9090 \
+  -v $(pwd):/app \
+  -e APKX_ROOT=/app \
+  apkx-web
+
+# Run by mounting only required dirs
+mkdir -p web-data/uploads web-data/reports web-data/downloads
+docker run --rm -p 9090:9090 \
+  -v $(pwd)/web-data:/web-data \
+  -v $(pwd)/config:/config \
+  -e APKX_UPLOAD_DIR=/web-data/uploads \
+  -e APKX_REPORTS_DIR=/web-data/reports \
+  -e APKX_DOWNLOAD_DIR=/web-data/downloads \
+  -e APKX_PATTERNS_PATH=/config/regexes.yaml \
+  apkx-web
+```
+
+#### Bash (build and run locally)
+```bash
+# Build binaries
+go build -o apkx cmd/apkx/main.go
+go build -o apkx-web cmd/server/main.go
+
+# Run web server
+./apkx-web -addr :9090
+
+# Optional: set env overrides
+export APKX_ROOT=$(pwd)
+export APKX_UPLOAD_DIR=$(pwd)/web-data/uploads
+export APKX_REPORTS_DIR=$(pwd)/web-data/reports
+export APKX_DOWNLOAD_DIR=$(pwd)/web-data/downloads
+export APKX_PATTERNS_PATH=$(pwd)/config/regexes.yaml
+./apkx-web -addr :9090
+```
+
+### Troubleshooting
+- Compose “no such service”: run commands from the repo root containing `docker-compose.yml`.
+- Empty reports directory: confirm startup log line prints `reportsRoot=/web-data/reports` and that `web-data` is mounted.
+- Rebuild image if paths look stale: `docker build --no-cache -t apkx-web .` or `docker compose up --build`.
+
 ### Smart project root & paths
 - The web server automatically detects the project root:
   1. Uses `APKX_ROOT` if set
