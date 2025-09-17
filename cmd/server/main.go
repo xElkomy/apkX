@@ -20,11 +20,40 @@ import (
 	"github.com/h0tak88r/apkX/internal/analyzer"
 )
 
-const (
-	uploadDir   = "/home/sallam/AutoAR/apkX/web-data/uploads"
-	reportsRoot = "/home/sallam/AutoAR/apkX/web-data/reports"
-	downloadDir = "/home/sallam/AutoAR/apkX/web-data/downloads"
+var (
+	uploadDir           string
+	reportsRoot         string
+	downloadDir         string
+	patternsPathDefault string
 )
+
+func init() {
+	root := detectProjectRoot()
+
+	if v := os.Getenv("APKX_UPLOAD_DIR"); v != "" {
+		uploadDir = v
+	} else {
+		uploadDir = filepath.Join(root, "web-data", "uploads")
+	}
+
+	if v := os.Getenv("APKX_REPORTS_DIR"); v != "" {
+		reportsRoot = v
+	} else {
+		reportsRoot = filepath.Join(root, "web-data", "reports")
+	}
+
+	if v := os.Getenv("APKX_DOWNLOAD_DIR"); v != "" {
+		downloadDir = v
+	} else {
+		downloadDir = filepath.Join(root, "web-data", "downloads")
+	}
+
+	if v := os.Getenv("APKX_PATTERNS_PATH"); v != "" {
+		patternsPathDefault = v
+	} else {
+		patternsPathDefault = filepath.Join(root, "config", "regexes.yaml")
+	}
+}
 
 // Optional global Discord webhook to forward results (JSON + HTML)
 var serverDefaultWebhook string
@@ -1228,7 +1257,7 @@ func processDownloadJob(job *Job, r *http.Request) {
 	cfg := analyzer.Config{
 		APKPath:      apkPath, // Use original APK for analysis
 		OutputDir:    outDir,
-		PatternsPath: filepath.Join("/home/sallam/AutoAR/apkX", "config", "regexes.yaml"),
+		PatternsPath: patternsPathDefault,
 		Workers:      3,
 		HTMLOutput:   generateHTML,
 		WebhookURL:   webhookURL,
@@ -1413,7 +1442,7 @@ func handleDownloadSimple(w http.ResponseWriter, r *http.Request) {
 	cfg := analyzer.Config{
 		APKPath:      apkPath,
 		OutputDir:    outDir,
-		PatternsPath: filepath.Join("/home/sallam/AutoAR/apkX", "config", "regexes.yaml"),
+		PatternsPath: patternsPathDefault,
 		Workers:      3,
 		HTMLOutput:   generateHTML,
 		WebhookURL:   webhookURL,
@@ -1661,7 +1690,7 @@ func processUploadJob(job *Job, apkPath string, r *http.Request) {
 	cfg := analyzer.Config{
 		APKPath:      apkPath, // Use original APK for analysis
 		OutputDir:    outDir,
-		PatternsPath: filepath.Join("/home/sallam/AutoAR/apkX", "config", "regexes.yaml"),
+		PatternsPath: patternsPathDefault,
 		Workers:      3,
 		HTMLOutput:   generateHTML,
 		WebhookURL:   webhookURL,
@@ -2080,4 +2109,59 @@ func getEnv(key, def string) string {
 		return def
 	}
 	return v
+}
+
+// detectProjectRoot attempts to find the apkX project root by:
+// 1) Using APKX_ROOT if set
+// 2) Walking up from the executable dir
+// 3) Walking up from the current working directory
+// A directory is considered the root if it contains either config/regexes.yaml or web-data/.
+func detectProjectRoot() string {
+	if root := os.Getenv("APKX_ROOT"); root != "" {
+		return root
+	}
+
+	tryDirs := []string{}
+
+	if exePath, err := os.Executable(); err == nil {
+		tryDirs = append(tryDirs, filepath.Dir(exePath))
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		tryDirs = append(tryDirs, cwd)
+	}
+
+	for _, start := range tryDirs {
+		dir := start
+		for {
+			if looksLikeRoot(dir) {
+				return dir
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	return "."
+}
+
+func looksLikeRoot(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "config", "regexes.yaml")); err == nil {
+		return true
+	}
+	if info, err := os.Stat(filepath.Join(dir, "web-data")); err == nil && info.IsDir() {
+		return true
+	}
+	if info, err := os.Stat(filepath.Join(dir, ".git")); err == nil && info.IsDir() {
+		return true
+	}
+	if modFile := filepath.Join(dir, "go.mod"); fileExists(modFile) {
+		b, _ := os.ReadFile(modFile)
+		if strings.Contains(string(b), "github.com/h0tak88r/apkX") {
+			return true
+		}
+	}
+	return false
 }

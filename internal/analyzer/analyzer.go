@@ -16,6 +16,9 @@ import (
 	"sync"
 	"time"
 
+	"archive/zip"
+	"encoding/binary"
+
 	"github.com/h0tak88r/apkX/internal/decompiler"
 	"github.com/h0tak88r/apkX/internal/reporter"
 	"github.com/h0tak88r/apkX/internal/utils"
@@ -63,10 +66,6 @@ type PatternsConfig struct {
 
 func NewAPKScanner(config *Config) *APKScanner {
 	analyzers := []AnalyzerInterface{}
-
-	if config.JanusScan {
-		analyzers = append(analyzers, NewJanusVulnerabilityAnalyzer())
-	}
 
 	return &APKScanner{
 		config:    config,
@@ -162,24 +161,10 @@ func (s *APKScanner) Run() error {
 		}
 	}
 
-	// Run additional security analyzers
-	for _, analyzer := range s.analyzers {
-		// Set APK path for analyzers that need it
-		analyzer.SetAPKPath(s.config.APKPath)
-
-		findings, err := analyzer.Analyze(s.tempDir)
-		if err != nil {
-			fmt.Printf("%sWarning: Analyzer error: %v%s\n",
-				utils.ColorWarning, err, utils.ColorEnd)
-			continue
-		}
-
-		if len(findings) > 0 {
-			// Use analyzer type name as category
-			analyzerType := fmt.Sprintf("%T", analyzer)
-			categoryName := strings.TrimPrefix(analyzerType, "*analyzer.")
-			categoryName = strings.TrimSuffix(categoryName, "Analyzer")
-			results[categoryName] = findings
+	// Built-in Janus vulnerability detection (pure Go, no external tools)
+	if s.config.JanusScan {
+		if finding := s.detectJanusVulnerabilityPure(); finding != "" {
+			results["JanusVulnerability"] = []string{finding}
 		}
 	}
 
@@ -1248,4 +1233,143 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// detectJanusVulnerabilityPure inspects the APK for presence of V1/V2/V3 schemes
+// without verifying cryptographic signatures. It returns a one-line finding string.
+func (s *APKScanner) detectJanusVulnerabilityPure() string {
+	v1, v2, v3 := detectSigningSchemes(s.config.APKPath)
+	if !v1 {
+		return ""
+	}
+	var vuln, sev string
+	if v2 || v3 {
+		vuln = "Potentially Vulnerable"
+		sev = "MEDIUM"
+	} else {
+		vuln = "Highly Vulnerable"
+		sev = "HIGH"
+	}
+	return fmt.Sprintf("[%s] Janus Vulnerability: %s (V1:%t V2:%t V3:%t)", sev, vuln, v1, v2, v3)
+}
+
+// detectSigningSchemes checks:
+// - V1: META-INF/*.RSA|*.DSA|*.EC entries
+// - V2/V3: APK Signing Block IDs (0x7109871a for v2, 0xf05368c0 for v3)
+func detectSigningSchemes(apkPath string) (v1, v2, v3 bool) {
+	// V1 detection via META-INF
+	if zr, err := zip.OpenReader(apkPath); err == nil {
+		for _, f := range zr.File {
+			name := strings.ToUpper(f.Name)
+			if strings.HasPrefix(name, "META-INF/") &&
+				(strings.HasSuffix(name, ".RSA") || strings.HasSuffix(name, ".DSA") || strings.HasSuffix(name, ".EC")) {
+				v1 = true
+				break
+			}
+		}
+		zr.Close()
+	}
+
+	// V2/V3 detection via APK Signing Block
+	if v2Found, v3Found := detectV2V3BySigningBlock(apkPath); v2Found || v3Found {
+		v2, v3 = v2Found, v3Found
+	}
+	return
+}
+
+// detectV2V3BySigningBlock parses the APK Signing Block located immediately
+// before the ZIP Central Directory. It scans the ID-value pairs for known IDs.
+func detectV2V3BySigningBlock(apkPath string) (bool, bool) {
+	const (
+		eocdSig       = 0x06054b50
+		maxEOCDSearch = 0x10000 // 64 KiB
+	)
+
+	f, err := os.Open(apkPath)
+	if err != nil {
+		return false, false
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return false, false
+	}
+	fileSize := fi.Size()
+	readStart := fileSize - maxEOCDSearch
+	if readStart < 0 {
+		readStart = 0
+	}
+	bufSize := fileSize - readStart
+	buf := make([]byte, bufSize)
+	if _, err := f.ReadAt(buf, readStart); err != nil {
+		return false, false
+	}
+
+	// Find EOCD
+	var eocdOffset int64 = -1
+	for i := len(buf) - 22; i >= 0; i-- { // min EOCD size is 22 bytes
+		if binary.LittleEndian.Uint32(buf[i:]) == eocdSig {
+			eocdOffset = readStart + int64(i)
+			break
+		}
+	}
+	if eocdOffset < 0 {
+		return false, false
+	}
+
+	// Central directory offset at EOCD+16 (uint32 LE)
+	cdOffset := int64(binary.LittleEndian.Uint32(buf[(eocdOffset-readStart)+16:]))
+
+	// The APK Signing Block ends right before the central dir. Its structure:
+	// [size (8 LE)] [pairs ...] [size (8 LE)] [magic (16 bytes)]
+	// We need to read 24 bytes before cdOffset to get tail size+magic then hop back.
+	tail := make([]byte, 24)
+	if _, err := f.ReadAt(tail, cdOffset-24); err != nil {
+		return false, false
+	}
+	// Verify magic "APK Sig Block 42"
+	magic := tail[8:24]
+	if string(magic) != "APK Sig Block 42" {
+		return false, false
+	}
+	blockSize := int64(binary.LittleEndian.Uint64(tail[:8]))
+	// The size counts everything except the first 8 bytes; total block = 8 + size
+	totalBlockSize := 8 + blockSize
+	startOfBlock := cdOffset - totalBlockSize
+	if startOfBlock < 0 {
+		return false, false
+	}
+
+	block := make([]byte, totalBlockSize)
+	if _, err := f.ReadAt(block, startOfBlock); err != nil {
+		return false, false
+	}
+
+	// Skip first 8 bytes (leading size)
+	p := int64(8)
+	end := totalBlockSize - 24 // before [size][magic]
+	var hasV2, hasV3 bool
+	for p < end {
+		if p+8 > end {
+			break
+		}
+		pairLen := int64(binary.LittleEndian.Uint64(block[p:]))
+		p += 8
+		if pairLen <= 4 || p+pairLen > end {
+			break
+		}
+		id := binary.LittleEndian.Uint32(block[p:])
+		switch id {
+		case 0x7109871a: // V2 ID
+			hasV2 = true
+		case 0xf05368c0: // V3 ID
+			hasV3 = true
+		}
+		p += pairLen
+		if hasV2 && hasV3 {
+			break
+		}
+	}
+	return hasV2, hasV3
 }

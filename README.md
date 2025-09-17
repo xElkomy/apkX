@@ -123,10 +123,46 @@ export DISCORD_WEBHOOK="https://discord.com/api/webhooks/XXX/YYY"
 ### Run with Docker
 ```bash
 # Build image
-docker build -t apkx-web .
+docker build --no-cache -t apkx-web .
 
-# Run (with MITM enabled by default)
-docker run --rm -p 9090:9090 apkx-web
+# Option A: Mount project root (simplest)
+docker run --rm -p 9090:9090 \
+  -v /home/sallam/apkX:/app \
+  -e APKX_ROOT=/app \
+  apkx-web
+
+# Option B: Mount only required dirs/files
+docker run --rm -p 9090:9090 \
+  -v /home/sallam/apkX/web-data:/web-data \
+  -v /home/sallam/apkX/config:/config \
+  -e APKX_UPLOAD_DIR=/web-data/uploads \
+  -e APKX_REPORTS_DIR=/web-data/reports \
+  -e APKX_DOWNLOAD_DIR=/web-data/downloads \
+  -e APKX_PATTERNS_PATH=/config/regexes.yaml \
+  apkx-web
+```
+
+Notes:
+- If you previously built the image, use `--no-cache` to avoid stale binaries with older hardcoded paths.
+- The server auto-detects the project root. You can pin it with `APKX_ROOT` or override directories with `APKX_*` envs shown above.
+
+### Smart project root & paths
+- The web server automatically detects the project root:
+  1. Uses `APKX_ROOT` if set
+  2. Walks up from the executable directory
+  3. Falls back to the current working directory and walks up
+- A directory is considered the root if it contains `config/regexes.yaml`, `web-data/`, `.git/`, or a `go.mod` referencing `github.com/h0tak88r/apkX`.
+
+Derived defaults (overridable via env):
+- `APKX_UPLOAD_DIR` default: `<root>/web-data/uploads`
+- `APKX_REPORTS_DIR` default: `<root>/web-data/reports`
+- `APKX_DOWNLOAD_DIR` default: `<root>/web-data/downloads`
+- `APKX_PATTERNS_PATH` default: `<root>/config/regexes.yaml`
+
+Example to pin root explicitly:
+```bash
+export APKX_ROOT=/home/sallam/apkX
+./apkx-web -addr :9090
 ```
 
 ### One-shot installer (Debian/Ubuntu)
